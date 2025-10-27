@@ -1,6 +1,6 @@
-/* Pelichet QC — app.js (PWA + scanner iOS + resize <= 600Ko + KPI + export) */
+/* Pelichet QC — app.js (Galerie pour code-barres, resize <= 600Ko, KPI, export) */
 
-/* ---------- Config globale / chargement config.json si présent ---------- */
+/* ---------- Config / chargement config.json si présent ---------- */
 (function ensureConfig(){
   window.CONFIG = window.CONFIG || {};
   if (!window.CONFIG.__loadedFromJson__) {
@@ -25,7 +25,7 @@ function initTheme(){
   let theme = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
   document.documentElement.setAttribute('data-theme', theme);
   const meta = qs('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', theme==='dark'?'#0f1115':'#ff6a00');
-  if (toggle) toggle.addEventListener('click', ()=>{
+  toggle?.addEventListener('click', ()=>{
     theme = theme==='dark'?'light':'dark';
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
@@ -70,9 +70,6 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
 }
 
-/* ---------- iOS detection ---------- */
-function isIOS(){ return /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document); }
-
 /* ---------- Image utils + resize <= ~600Ko ---------- */
 function guessExtFromMime(m){ return m==='image/png'?'png':'jpg'; }
 async function fileToDataURL(file){
@@ -101,26 +98,27 @@ async function resizeFileIfNeeded(file){
   return await resizeDataUrl(raw, window.CONFIG.MAX_IMAGE_DIM||1600, window.CONFIG.OUTPUT_MIME||'image/jpeg', window.CONFIG.QUALITY||0.85);
 }
 
-/* ---------- ZXing decode depuis fichier (photo code-barres) ---------- */
-async function imageElementScaled(img, minWidth=800){
+/* ---------- ZXing (décodage depuis image de la galerie) ---------- */
+async function fileToImage(file){
+  return await new Promise((resolve,reject)=>{ const img=new Image(); img.onload=()=>resolve(img); img.onerror=reject; const fr=new FileReader(); fr.onload=()=>img.src=fr.result; fr.onerror=reject; fr.readAsDataURL(file); });
+}
+async function imageElementScaled(img, minWidth=1200){
   return await new Promise(resolve=>{
-    const baseW=img.naturalWidth||img.width||minWidth; const baseH=img.naturalHeight||img.height||minWidth;
-    const scale=Math.max(1, Math.ceil(minWidth/Math.max(1,baseW)));
-    const w=baseW*scale, h=baseH*scale;
+    const w0=img.naturalWidth||img.width||minWidth, h0=img.naturalHeight||img.height||minWidth;
+    const scale=Math.max(1, Math.ceil(minWidth/Math.max(1,w0)));
+    const w=w0*scale, h=h0*scale;
     const c=document.createElement('canvas'); c.width=w; c.height=h;
     c.getContext('2d').drawImage(img,0,0,w,h);
     const out=new Image(); out.onload=()=>resolve(out); out.src=c.toDataURL('image/png');
   });
 }
-async function fileToImage(file){
-  return await new Promise((resolve,reject)=>{ const img=new Image(); img.onload=()=>resolve(img); img.onerror=reject; const fr=new FileReader(); fr.onload=()=>img.src=fr.result; fr.onerror=reject; fr.readAsDataURL(file); });
-}
 async function decodeFileToBarcode(file){
+  // 1) API native (si dispo)
   if ('BarcodeDetector' in window) {
     try{
       const bd = new window.BarcodeDetector({ formats: ['ean_13','code_128','code_39'] });
       const img = await fileToImage(file);
-      const el = await imageElementScaled(img, isIOS()?1600:800);
+      const el = await imageElementScaled(img, 1200);
       const c=document.createElement('canvas'); c.width=el.naturalWidth||el.width; c.height=el.naturalHeight||el.height;
       c.getContext('2d').drawImage(el,0,0,c.width,c.height);
       const blob = await new Promise(r=>c.toBlob(r,'image/png'));
@@ -129,8 +127,9 @@ async function decodeFileToBarcode(file){
       if (codes && codes[0] && codes[0].rawValue) return String(codes[0].rawValue);
     }catch(_){}
   }
+  // 2) ZXing
   const img = await fileToImage(file);
-  const el = await imageElementScaled(img, isIOS()?1600:800);
+  const el = await imageElementScaled(img, 1200);
   const reader = new ZXingBrowser.BrowserMultiFormatReader();
   const hints = new Map();
   hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS, [
@@ -160,7 +159,7 @@ function initKoBlocks(){
   qsa('form.qc-form').forEach(f=>refreshFor(f));
 }
 
-/* ---------- Hooks Caméra/Galerie -> cible ---------- */
+/* ---------- Hooks Caméra/Galerie -> cible (photo principale) ---------- */
 function hookCameraGalleryPair(btnCamId, camId, btnGalId, galId, targetId, labelId){
   const btnCam=qs('#'+btnCamId), cam=qs('#'+camId), btnGal=qs('#'+btnGalId), gal=qs('#'+galId), tgt=qs('#'+targetId), lbl=qs('#'+labelId);
   function copy(src){
@@ -174,7 +173,36 @@ function hookCameraGalleryPair(btnCamId, camId, btnGalId, galId, targetId, label
   gal?.addEventListener('change', ()=> copy(gal));
 }
 
-/* ---------- Réseau (timeout + fallback XHR) ---------- */
+/* ---------- Lecture code-barres depuis galerie (3 formulaires) ---------- */
+function initBarcodeFromGallery(){
+  function wire(btnSel, fileSel, targetSel, statusSel){
+    const btn=qs(btnSel), fi=qs(fileSel), target=qs(targetSel), status=qs(statusSel);
+    if(!btn||!fi||!target) return;
+    btn.addEventListener('click', ()=> fi.click());
+    fi.addEventListener('change', async ()=>{
+      if(!fi.files || !fi.files[0]) return;
+      status && (status.textContent='Décodage en cours…');
+      try{
+        const code = await decodeFileToBarcode(fi.files[0]);
+        if (code) {
+          target.value = code;
+          status && (status.textContent='✅ Code détecté : '+code);
+        } else {
+          status && (status.textContent='❌ Code non détecté. Essayez une autre photo (netteté, cadrage, lumière).');
+          alert('Code non détecté. Choisissez une photo nette, bien cadrée et éclairée.');
+        }
+      }catch(e){
+        status && (status.textContent='❌ Erreur décodage');
+        alert('Erreur pendant le décodage: '+String(e.message||e));
+      }
+    });
+  }
+  wire('#btnCartonsBC', '#cartons_bc_file', '#cartons_code', '#cartons_bc_status');
+  wire('#btnPaBC', '#pa_bc_file', '#pa_code', '#pa_bc_status');
+  wire('#btnPdBC', '#pd_bc_file', '#pd_code', '#pd_bc_status');
+}
+
+/* ---------- Réseau (timeout + fallback XHR Android) ---------- */
 function fetchWithTimeout(input, init={}, timeoutMs=30000){
   return new Promise((resolve,reject)=>{
     const ctrl=new AbortController(); const id=setTimeout(()=>{ctrl.abort();reject(new Error('Timeout réseau'));},timeoutMs);
@@ -200,17 +228,16 @@ async function sendFormToBackend(fd){
   }catch(_){ return await postFormDataXHR(baseUrl, fd, (l,t)=> setLoaderProgress(l,t)); }
 }
 
-/* ---------- Soumission formulaires ---------- */
+/* ---------- Formulaires ---------- */
 function defaultTodayOnDates(){
   const today = new Date().toISOString().slice(0,10);
   qsa('form.qc-form input[type="date"]').forEach(i=>{ if(!i.value) i.value=today; });
 }
 function ensureOkDefault(){
   qsa('form.qc-form').forEach(f=>{
-    qsa('.okko input[value="OK"]', f).forEach(r=>{ r.checked = r.checked || true; });
+    qsa('.okko input[value="OK"]', f).forEach(r=>{ r.checked = true; });
   });
 }
-
 function initForms(){
   qsa('.qc-form').forEach(form=>{
     form.addEventListener('submit', async (ev)=>{
@@ -223,9 +250,9 @@ function initForms(){
 
       try{
         // Photo principale
-        let main=null; const inputMain=qs('input[name="photo_principale"]', form) || qs('#'+form.id+'_photo_target', form);
+        let main=null; 
         const target = form.querySelector('input[name="photo_principale"]') || qs('#cartons_photo_target') || qs('#pa_photo_target') || qs('#pd_photo_target');
-        const theFile = target?.files?.[0] || inputMain?.files?.[0] || null;
+        const theFile = target?.files?.[0] || null;
         if (theFile) main = await resizeFileIfNeeded(theFile);
 
         // Questions
@@ -346,58 +373,63 @@ function renderKpi(kpi){
   if (!total){ const p=document.createElement('p'); p.textContent='Aucune donnée pour la période choisie.'; wrap.appendChild(p); }
 }
 
-/* ---------- Scanner live (iPhone OK) ---------- */
-let _scanner={ stream:null, reader:null, targetInputId:null, running:false };
-function openScannerFor(targetInputId){ _scanner.targetInputId=targetInputId; qs('#scannerModal').style.display='grid'; }
-function closeScanner(){ stopScanner(); qs('#scannerModal').style.display='none'; }
-async function startScanner(){
-  try{
-    if(!_scanner.reader) _scanner.reader=new ZXingBrowser.BrowserMultiFormatReader();
-    const video=qs('#scannerVideo'); video.setAttribute('playsinline','true'); video.muted=true;
-    const constraints={ audio:false, video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} } };
-    const stream=await navigator.mediaDevices.getUserMedia(constraints); _scanner.stream=stream; video.srcObject=stream; await video.play();
-    const hints=new Map();
-    hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS,[ZXingBrowser.BarcodeFormat.EAN_13, ZXingBrowser.BarcodeFormat.CODE_128, ZXingBrowser.BarcodeFormat.CODE_39]);
-    _scanner.reader.setHints(hints); _scanner.running=true;
-
-    const tick=async()=>{ if(!_scanner.running) return;
-      try{
-        const res=await _scanner.reader.decodeOnceFromVideoDevice(undefined,'scannerVideo');
-        if(res && res.getText){ const txt=res.getText(); const input=qs('#'+_scanner.targetInputId); if(input) input.value=String(txt); closeScanner(); return; }
-      }catch(_){/* retry */}
-      setTimeout(tick,250);
-    };
-    setTimeout(tick,250);
-  }catch(err){
-    alert("Caméra indisponible. Vérifie l'autorisation dans Safari. Détail: "+String(err&&err.message||err));
-    stopScanner();
-  }
-}
-function stopScanner(){
-  _scanner.running=false; try{ _scanner.reader?.reset(); }catch(_){}
-  if(_scanner.stream){ _scanner.stream.getTracks().forEach(t=>{ try{t.stop();}catch(_){}}); _scanner.stream=null; }
-}
-
 /* ---------- Init ---------- */
 document.addEventListener('DOMContentLoaded', ()=>{
   if (window.__QC_INIT__) return; window.__QC_INIT__=true;
 
   initTheme(); initTabs(); initKoBlocks();
+  // Dates par défaut + OK cochés
+  (function(){ const today=new Date().toISOString().slice(0,10); qsa('form.qc-form input[type="date"]').forEach(i=>{ if(!i.value) i.value=today; }); })();
+  (function(){ qsa('form.qc-form').forEach(f=> qsa('.okko input[value="OK"]', f).forEach(r=> r.checked=true)); })();
 
-  // Dates par défaut = aujourd'hui + OK cochés
-  defaultTodayOnDates(); ensureOkDefault();
+  // Photo principale (caméra/galerie)
+  function hookPair(btnCamId, camId, btnGalId, galId, targetId, labelId){
+    const btnCam=qs('#'+btnCamId), cam=qs('#'+camId), btnGal=qs('#'+btnGalId), gal=qs('#'+galId), tgt=qs('#'+targetId), lbl=qs('#'+labelId);
+    function copy(src){
+      if (!src.files||!src.files[0]) return;
+      const dt=new DataTransfer(); dt.items.add(src.files[0]); tgt.files=dt.files;
+      if (lbl) lbl.textContent=src.files[0].name;
+    }
+    btnCam?.addEventListener('click', ()=> cam?.click());
+    btnGal?.addEventListener('click', ()=> gal?.click());
+    cam?.addEventListener('change', ()=> copy(cam));
+    gal?.addEventListener('change', ()=> copy(gal));
+  }
+  hookPair('btnCartonsPhotoCam','cartons_photo_cam','btnCartonsPhotoGal','cartons_photo_gal','cartons_photo_target','cartons_photo_label');
+  hookPair('btnPaPhotoCam','pa_photo_cam','btnPaPhotoGal','pa_photo_gal','pa_photo_target','pa_photo_label');
+  hookPair('btnPdPhotoCam','pd_photo_cam','btnPdPhotoGal','pd_photo_gal','pd_photo_target','pd_photo_label');
 
-  // Hooks photo
-  hookCameraGalleryPair('btnCartonsPhotoCam','cartons_photo_cam','btnCartonsPhotoGal','cartons_photo_gal','cartons_photo_target','cartons_photo_label');
-  hookCameraGalleryPair('btnPaPhotoCam','pa_photo_cam','btnPaPhotoGal','pa_photo_gal','pa_photo_target','pa_photo_label');
-  hookCameraGalleryPair('btnPdPhotoCam','pd_photo_cam','btnPdPhotoGal','pd_photo_gal','pd_photo_target','pd_photo_label');
+  // Code-barres depuis galerie
+  (function initBarcodeFromGallery(){
+    function wire(btnSel, fileSel, targetSel, statusSel){
+      const btn=qs(btnSel), fi=qs(fileSel), target=qs(targetSel), status=qs(statusSel);
+      if(!btn||!fi||!target) return;
+      btn.addEventListener('click', ()=> fi.click());
+      fi.addEventListener('change', async ()=>{
+        if(!fi.files || !fi.files[0]) return;
+        status && (status.textContent='Décodage en cours…');
+        try{
+          const code = await decodeFileToBarcode(fi.files[0]);
+          if (code) {
+            target.value = code;
+            status && (status.textContent='✅ Code détecté : '+code);
+          } else {
+            status && (status.textContent='❌ Code non détecté. Essayez une autre photo (netteté, cadrage, lumière).');
+            alert('Code non détecté. Choisissez une photo nette, bien cadrée et éclairée.');
+          }
+        }catch(e){
+          status && (status.textContent='❌ Erreur décodage');
+          alert('Erreur pendant le décodage: '+String(e.message||e));
+        }
+      });
+    }
+    wire('#btnCartonsBC', '#cartons_bc_file', '#cartons_code', '#cartons_bc_status');
+    wire('#btnPaBC', '#pa_bc_file', '#pa_code', '#pa_bc_status');
+    wire('#btnPdBC', '#pd_bc_file', '#pd_code', '#pd_bc_status');
+  })();
 
-  // Boutons scanner
-  qsa('button[data-scan]').forEach(b=> b.addEventListener('click',()=> openScannerFor(b.dataset.scan)));
-  qs('#scannerStart')?.addEventListener('click', startScanner);
-  qs('#scannerStop')?.addEventListener('click', stopScanner);
-  qs('#scannerClose')?.addEventListener('click', closeScanner);
-
-  // Formulaires + KPI
-  initForms(); initKpi();
+  // Soumission + KPI
+  initForms(); 
+  qs('#btnKpi')?.addEventListener('click', loadAndRenderKpi);
+  qs('#btnExport')?.addEventListener('click', doExportXlsx);
 });
