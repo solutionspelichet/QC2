@@ -112,36 +112,63 @@ async function imageElementScaled(img, minWidth=1200){
     const out=new Image(); out.onload=()=>resolve(out); out.src=c.toDataURL('image/png');
   });
 }
+async function fileToImage(file){
+  return await new Promise((resolve,reject)=>{
+    const img=new Image(); img.onload=()=>resolve(img); img.onerror=reject;
+    const fr=new FileReader(); fr.onload=()=>img.src=fr.result; fr.onerror=reject; fr.readAsDataURL(file);
+  });
+}
+async function imageElementScaled(img, minWidth=1200){
+  return await new Promise(resolve=>{
+    const w0=img.naturalWidth||img.width||minWidth, h0=img.naturalHeight||img.height||minWidth;
+    const scale=Math.max(1, Math.ceil(minWidth/Math.max(1,w0)));
+    const w=w0*scale, h=h0*scale;
+    const c=document.createElement('canvas'); c.width=w; c.height=h;
+    c.getContext('2d').drawImage(img,0,0,w,h);
+    const out=new Image(); out.onload=()=>resolve(out); out.src=c.toDataURL('image/png');
+  });
+}
+
 async function decodeFileToBarcode(file){
-  // 1) API native (si dispo)
+  // 1) API native si dispo (rapide)
   if ('BarcodeDetector' in window) {
     try{
       const bd = new window.BarcodeDetector({ formats: ['ean_13','code_128','code_39'] });
       const img = await fileToImage(file);
-      const el = await imageElementScaled(img, 1200);
-      const c=document.createElement('canvas'); c.width=el.naturalWidth||el.width; c.height=el.naturalHeight||el.height;
+      const el  = await imageElementScaled(img, 1200);
+      const c   = document.createElement('canvas'); c.width=el.naturalWidth||el.width; c.height=el.naturalHeight||el.height;
       c.getContext('2d').drawImage(el,0,0,c.width,c.height);
-      const blob = await new Promise(r=>c.toBlob(r,'image/png'));
+      const blob= await new Promise(r=>c.toBlob(r,'image/png'));
       const bmp = await createImageBitmap(blob);
       const codes = await bd.detect(bmp);
       if (codes && codes[0] && codes[0].rawValue) return String(codes[0].rawValue);
-    }catch(_){}
+    }catch(_){} // on tombera sur ZXing
   }
-  // 2) ZXing
+
+  // 2) ZXing (UMD) — fonctionne sur iOS
+  const ZX = window.ZXingBrowser || window.ZXing || null;
+  if (!ZX) throw new Error('ZXing non chargé');
+
   const img = await fileToImage(file);
-  const el = await imageElementScaled(img, 1200);
-  const reader = new ZXingBrowser.BrowserMultiFormatReader();
-  const hints = new Map();
-  hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS, [
-    ZXingBrowser.BarcodeFormat.EAN_13,
-    ZXingBrowser.BarcodeFormat.CODE_128,
-    ZXingBrowser.BarcodeFormat.CODE_39
-  ]);
-  reader.setHints(hints);
+  const el  = await imageElementScaled(img, 1200);
+
+  // Bundle @zxing/browser expose BrowserMultiFormatReader avec decodeFromImage
+  const ReaderCtor = ZX.BrowserMultiFormatReader || ZX.MultiFormatReader;
+  if (!ReaderCtor) throw new Error('Lecteur ZXing introuvable');
+
+  const reader = new ReaderCtor();
+
   try{
-    const res = await reader.decodeFromImage(el);
-    return res ? res.getText() : '';
-  }catch{ return ''; }
+    if (typeof reader.decodeFromImage === 'function') {
+      const res = await reader.decodeFromImage(el);
+      return res ? String(res.getText ? res.getText() : res.text || '') : '';
+    }
+    // Autre API: quelques bundles exposent decodeOnce depuis un device, pas depuis image
+    // Dans ce cas, on ne peut pas décoder l’image — on renvoie vide.
+    return '';
+  }catch{
+    return '';
+  }
 }
 
 /* ---------- KO blocks ---------- */
