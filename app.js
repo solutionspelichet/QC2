@@ -629,3 +629,110 @@ document.addEventListener('DOMContentLoaded', ()=>{
   hookCameraGalleryPair('btnPdPhotoCam','pd_photo_cam','btnPdPhotoGal','pd_photo_gal','pd_photo_target','pd_photo_label');
   hookCameraGalleryPair('btnPdBcCam','pd_bc_cam','btnPdBcGal','pd_bc_gal','pd_barcode_file','pd_bc_label');
 });
+/* ===== iOS friendly live scanner (ZXing + getUserMedia) ===== */
+let _scanner = { stream:null, reader:null, targetInputId:null, running:false };
+
+function isIOS(){
+  return /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
+}
+
+function openScannerFor(targetInputId){
+  _scanner.targetInputId = targetInputId;
+  const modal = document.getElementById('scannerModal');
+  modal.style.display = 'grid';
+}
+
+function closeScanner(){
+  stopScanner();
+  const modal = document.getElementById('scannerModal');
+  modal.style.display = 'none';
+}
+
+async function startScanner(){
+  try{
+    // ZXing Browser reader
+    if (!_scanner.reader) _scanner.reader = new ZXingBrowser.BrowserMultiFormatReader();
+
+    // Contrainte iOS: playsinline + muted + user gesture (on clique Démarrer)
+    const video = document.getElementById('scannerVideo');
+    video.setAttribute('playsinline','true'); video.muted = true;
+
+    // Contrainte caméra dos
+    const constraints = {
+      audio:false,
+      video:{
+        facingMode: { ideal: 'environment' },
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    };
+
+    // getUserMedia
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    _scanner.stream = stream;
+    video.srcObject = stream;
+    await video.play();
+
+    // Démarrer la détection (ZXing)
+    const hints = new Map();
+    hints.set(ZXingBrowser.DecodeHintType.POSSIBLE_FORMATS, [
+      ZXingBrowser.BarcodeFormat.EAN_13,
+      ZXingBrowser.BarcodeFormat.CODE_128,
+      ZXingBrowser.BarcodeFormat.CODE_39
+    ]);
+    _scanner.reader.setHints(hints);
+
+    _scanner.running = true;
+
+    // Boucle de scan: on lit une frame toutes ~250ms pour ménager iOS
+    const tick = async ()=>{
+      if (!_scanner.running) return;
+      try{
+        const result = await _scanner.reader.decodeOnceFromVideoDevice(undefined, 'scannerVideo');
+        if (result && result.getText) {
+          const text = result.getText();
+          if (text) {
+            const input = document.getElementById(_scanner.targetInputId);
+            if (input) input.value = String(text);
+            closeScanner();
+            return;
+          }
+        }
+      }catch(_){ /* on ignore et on retente */ }
+      setTimeout(tick, 250);
+    };
+    // Lancement une 1re fois
+    setTimeout(tick, 250);
+
+  }catch(err){
+    alert("Impossible d'accéder à la caméra.\n- Vérifie que l'autorisation Caméra est accordée à Safari.\n- Sur iPhone en PWA, essaye d'ouvrir l’appli dans Safari direct.\nDétail: " + String(err && err.message || err));
+    stopScanner();
+  }
+}
+
+function stopScanner(){
+  _scanner.running = false;
+  try{ if (_scanner.reader) _scanner.reader.reset(); }catch(_){}
+  if (_scanner.stream){
+    _scanner.stream.getTracks().forEach(t=>{ try{ t.stop(); }catch(_){}} );
+    _scanner.stream = null;
+  }
+}
+
+/* ===== Wiring UI ===== */
+document.addEventListener('DOMContentLoaded', ()=>{
+  // Boutons “Scanner” à côté des inputs code-barres
+  document.querySelectorAll('button[data-scan]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const target = btn.getAttribute('data-scan');
+      openScannerFor(target);
+    });
+  });
+  // Contrôles modal
+  const btnStart = document.getElementById('scannerStart');
+  const btnStop  = document.getElementById('scannerStop');
+  const btnClose = document.getElementById('scannerClose');
+  if (btnStart) btnStart.addEventListener('click', startScanner);
+  if (btnStop)  btnStop.addEventListener('click', stopScanner);
+  if (btnClose) btnClose.addEventListener('click', closeScanner);
+});
