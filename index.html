@@ -5,352 +5,265 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#ff6a00" />
   <title>Pelichet QC – Contrôle Qualité</title>
-
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon-32.png" />
   <link rel="apple-touch-icon" href="icon-180.png" />
   <link rel="stylesheet" href="style.css" />
-
-  <!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
-
-<!-- ZXing (bundle navigateur UMD) -->
-<!-- ZXing universel (compatibilité iOS / Safari / PWA) -->
-<script>
-window.ZXING_READY = new Promise((resolve,reject)=>{
-  const s=document.createElement('script');
-  s.src='https://cdn.jsdelivr.net/npm/@zxing/browser@latest/umd/index.min.js';
-  s.onload=()=>{ 
-    if(window.ZXingBrowser){ 
-      console.log('ZXingBrowser chargé ✅'); 
-      resolve(window.ZXingBrowser);
-    } else { 
-      reject(new Error('ZXingBrowser non trouvé')); 
-    }
-  };
-  s.onerror=()=>reject(new Error('Échec chargement ZXing'));
-  document.head.appendChild(s);
-});
-</script>
-
-
-  <!-- Config inline (tu peux aussi créer un config.json identique à la racine) -->
-  <script>
-    window.CONFIG = {
-      WEBAPP_BASE_URL: "https://script.google.com/macros/s/AKfycbztRuXNCGGHlXG3BiSRPXJdo7OThM1kfw1BBdP1VXxRgHPa9QGpWDCz0HIeBCDWN3Uq/exec",
-      RESIZE_ENABLED: true,
-      MAX_IMAGE_DIM: 1600,
-      OUTPUT_MIME: "image/jpeg",
-      QUALITY: 0.85,
-      MAX_FILE_SIZE_KB: 600
-    };
-  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
 </head>
 
 <body>
-  <header class="app-header">
+  <header>
     <img src="icon-180.png" alt="Pelichet" class="logo" />
     <h1>Pelichet QC</h1>
-    <button id="toggleTheme" class="btn" title="Clair / Sombre">☀️/🌙</button>
+    <button id="themeToggle" title="Basculer clair/sombre">☀️/🌙</button>
   </header>
 
-  <nav class="tabs">
-    <button class="tab active" data-tab="Cartons">Cartons</button>
-    <button class="tab" data-tab="Palettes_Avant">Palettes Avant</button>
-    <button class="tab" data-tab="Palettes_Destination">Palettes Destination</button>
-    <button class="tab" data-tab="KPI">KPI</button>
+  <nav>
+    <button class="tab active" data-target="tabCartons">Cartons</button>
+    <button class="tab" data-target="tabPalettesAvant">Palettes Avant</button>
+    <button class="tab" data-target="tabPalettesDestination">Palettes Destination</button>
+    <button class="tab" data-target="tabKpi">KPI</button>
   </nav>
 
   <main>
-    <!-- CARTONS -->
-    <section id="tab-Cartons" class="tab-pane active">
+
+    <!-- =================== CARTONS =================== -->
+    <section id="tabCartons" class="tabContent active">
       <h2>Contrôle des Cartons</h2>
-      <form class="qc-form" data-type="Cartons">
-        <div class="row">
-          <label>Date du jour</label>
-          <input type="date" name="date_jour" required />
+      <form id="formCartons" class="qcForm" data-type="Cartons">
+        <label>Date du jour</label>
+        <input type="date" name="date_saisie" required />
+
+        <label>Code-barres</label>
+        <div class="hstack">
+          <input id="cartons_code" name="code_barres" type="text" inputmode="numeric" required />
+          <button type="button" class="btn" data-scan="cartons_code">Scanner</button>
         </div>
 
-        <div class="row">
-          <label>Code-barres</label>
-          <div class="hstack">
-            <input id="cartons_code" name="code_barres" type="text" inputmode="numeric" required />
-            <button type="button" class="btn" id="btnCartonsBC">Depuis la galerie</button>
-          </div>
-          <input id="cartons_bc_file" type="file" accept="image/*" hidden />
-          <div class="muted" id="cartons_bc_status">Choisissez une photo nette du code-barres.</div>
-        </div>
-
-        <div class="row">
-          <label>Photo principale</label>
-          <div class="hstack">
-            <button id="btnCartonsPhotoCam" type="button" class="btn">Caméra</button>
-            <button id="btnCartonsPhotoGal" type="button" class="btn">Galerie</button>
-            <span id="cartons_photo_label" class="muted">Aucune</span>
-          </div>
-          <input id="cartons_photo_cam" type="file" accept="image/*" capture="environment" hidden />
-          <input id="cartons_photo_gal" type="file" accept="image/*" hidden />
-          <input id="cartons_photo_target" name="photo_principale" type="file" accept="image/*" hidden />
-        </div>
+        <label>Photo principale</label>
+        <input type="file" name="photo_principale" accept="image/*" capture="environment" />
 
         <fieldset>
-          <legend>Questions</legend>
+          <legend>Questions de contrôle</legend>
 
           <div class="qblock">
             <label>Callage papier correct ?</label>
-            <div class="okko">
-              <label><input type="radio" name="callage_papier" value="OK" checked> OK</label>
-              <label><input type="radio" name="callage_papier" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="callage_papier">
-              <input type="file" data-photofor="callage_papier" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="callage_papier" placeholder="Décrire le problème"></textarea>
+            <select name="callage_papier">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="callage_papier_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="callage_papier_commentaire" placeholder="Décrire le problème"></textarea>
             </div>
           </div>
 
           <div class="qblock">
             <label>Intercalaires présents ?</label>
-            <div class="okko">
-              <label><input type="radio" name="intercalaires_livres" value="OK" checked> OK</label>
-              <label><input type="radio" name="intercalaires_livres" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="intercalaires_livres">
-              <input type="file" data-photofor="intercalaires_livres" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="intercalaires_livres" placeholder="Décrire le problème"></textarea>
+            <select name="intercalaires_livres">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="intercalaires_livres_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="intercalaires_livres_commentaire" placeholder="Décrire le problème"></textarea>
             </div>
           </div>
 
           <div class="qblock">
-            <label>Ordre/disposition respectés ?</label>
-            <div class="okko">
-              <label><input type="radio" name="ordre_colonnes" value="OK" checked> OK</label>
-              <label><input type="radio" name="ordre_colonnes" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="ordre_colonnes">
-              <input type="file" data-photofor="ordre_colonnes" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="ordre_colonnes" placeholder="Décrire le problème"></textarea>
+            <label>Ordre et disposition respectés ?</label>
+            <select name="ordre_colonnes">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="ordre_colonnes_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="ordre_colonnes_commentaire" placeholder="Décrire le problème"></textarea>
             </div>
           </div>
 
           <div class="qblock">
             <label>Scotch bien appliqué ?</label>
-            <div class="okko">
-              <label><input type="radio" name="scotch" value="OK" checked> OK</label>
-              <label><input type="radio" name="scotch" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="scotch">
-              <input type="file" data-photofor="scotch" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="scotch" placeholder="Décrire le problème"></textarea>
+            <select name="scotch">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="scotch_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="scotch_commentaire" placeholder="Décrire le problème"></textarea>
             </div>
           </div>
 
           <div class="qblock">
             <label>Livres dépoussiérés ?</label>
-            <div class="okko">
-              <label><input type="radio" name="depoussierage" value="OK" checked> OK</label>
-              <label><input type="radio" name="depoussierage" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="depoussierage">
-              <input type="file" data-photofor="depoussierage" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="depoussierage" placeholder="Décrire le problème"></textarea>
+            <select name="depoussierage">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="depoussierage_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="depoussierage_commentaire" placeholder="Décrire le problème"></textarea>
             </div>
           </div>
         </fieldset>
 
-        <div class="actions">
-          <button class="btn primary" type="submit">📤 Envoyer</button>
-          <span class="result"></span>
-        </div>
+        <button type="submit" class="btn primary">📤 Envoyer</button>
       </form>
     </section>
 
-    <!-- PALETTES AVANT -->
-    <section id="tab-Palettes_Avant" class="tab-pane">
+    <!-- =================== PALETTES AVANT =================== -->
+    <section id="tabPalettesAvant" class="tabContent">
       <h2>Contrôle des Palettes (Avant camion)</h2>
-      <form class="qc-form" data-type="Palettes_Avant">
-        <div class="row">
-          <label>Date du jour</label>
-          <input type="date" name="date_jour" required />
+      <form id="formPA" class="qcForm" data-type="Palettes_Avant">
+        <label>Date du jour</label>
+        <input type="date" name="date_saisie" required />
+
+        <label>Code-barres palette</label>
+        <div class="hstack">
+          <input id="pa_code" name="code_barres" type="text" required />
+          <button type="button" class="btn" data-scan="pa_code">Scanner</button>
         </div>
 
-        <div class="row">
-          <label>Code-barres palette</label>
-          <div class="hstack">
-            <input id="pa_code" name="code_barres" type="text" required />
-            <button type="button" class="btn" id="btnPaBC">Depuis la galerie</button>
-          </div>
-          <input id="pa_bc_file" type="file" accept="image/*" hidden />
-          <div class="muted" id="pa_bc_status">Choisissez une photo nette du code-barres.</div>
-        </div>
-
-        <div class="row">
-          <label>Photo principale</label>
-          <div class="hstack">
-            <button id="btnPaPhotoCam" type="button" class="btn">Caméra</button>
-            <button id="btnPaPhotoGal" type="button" class="btn">Galerie</button>
-            <span id="pa_photo_label" class="muted">Aucune</span>
-          </div>
-          <input id="pa_photo_cam" type="file" accept="image/*" capture="environment" hidden />
-          <input id="pa_photo_gal" type="file" accept="image/*" hidden />
-          <input id="pa_photo_target" name="photo_principale" type="file" accept="image/*" hidden />
-        </div>
+        <label>Photo principale</label>
+        <input type="file" name="photo_principale" accept="image/*" capture="environment" />
 
         <fieldset>
-          <legend>Questions</legend>
+          <legend>Questions de contrôle</legend>
 
           <div class="qblock">
             <label>Cartons en bon état ?</label>
-            <div class="okko">
-              <label><input type="radio" name="cartons_etat" value="OK" checked> OK</label>
-              <label><input type="radio" name="cartons_etat" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="cartons_etat">
-              <input type="file" data-photofor="cartons_etat" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="cartons_etat" placeholder="Décrire le problème"></textarea>
+            <select name="cartons_etat">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="cartons_etat_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="cartons_etat_commentaire"></textarea>
             </div>
           </div>
 
           <div class="qblock">
             <label>Intercalaires présents ?</label>
-            <div class="okko">
-              <label><input type="radio" name="intercalaires_cartons" value="OK" checked> OK</label>
-              <label><input type="radio" name="intercalaires_cartons" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="intercalaires_cartons">
-              <input type="file" data-photofor="intercalaires_cartons" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="intercalaires_cartons" placeholder="Décrire le problème"></textarea>
+            <select name="intercalaires_cartons">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="intercalaires_cartons_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="intercalaires_cartons_commentaire"></textarea>
             </div>
           </div>
 
           <div class="qblock">
             <label>Ordre des cartons respecté ?</label>
-            <div class="okko">
-              <label><input type="radio" name="ordre_cartons" value="OK" checked> OK</label>
-              <label><input type="radio" name="ordre_cartons" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="ordre_cartons">
-              <input type="file" data-photofor="ordre_cartons" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="ordre_cartons" placeholder="Décrire le problème"></textarea>
+            <select name="ordre_cartons">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="ordre_cartons_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="ordre_cartons_commentaire"></textarea>
             </div>
           </div>
 
           <div class="qblock">
             <label>Cerclage bien appliqué ?</label>
-            <div class="okko">
-              <label><input type="radio" name="cerclage" value="OK" checked> OK</label>
-              <label><input type="radio" name="cerclage" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="cerclage">
-              <input type="file" data-photofor="cerclage" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="cerclage" placeholder="Décrire le problème"></textarea>
+            <select name="cerclage">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="cerclage_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="cerclage_commentaire"></textarea>
             </div>
           </div>
 
           <div class="qblock">
             <label>Palette stable ?</label>
-            <div class="okko">
-              <label><input type="radio" name="stabilite" value="OK" checked> OK</label>
-              <label><input type="radio" name="stabilite" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="stabilite">
-              <input type="file" data-photofor="stabilite" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="stabilite" placeholder="Décrire le problème"></textarea>
+            <select name="stabilite">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="stabilite_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="stabilite_commentaire"></textarea>
             </div>
           </div>
         </fieldset>
 
-        <div class="actions">
-          <button class="btn primary" type="submit">📤 Envoyer</button>
-          <span class="result"></span>
-        </div>
+        <button type="submit" class="btn primary">📤 Envoyer</button>
       </form>
     </section>
 
-    <!-- PALETTES DESTINATION -->
-    <section id="tab-Palettes_Destination" class="tab-pane">
+    <!-- =================== PALETTES DESTINATION =================== -->
+    <section id="tabPalettesDestination" class="tabContent">
       <h2>Contrôle des Palettes (Destination)</h2>
-      <form class="qc-form" data-type="Palettes_Destination">
-        <div class="row">
-          <label>Date du jour</label>
-          <input type="date" name="date_jour" required />
+      <form id="formPD" class="qcForm" data-type="Palettes_Destination">
+        <label>Date du jour</label>
+        <input type="date" name="date_saisie" required />
+
+        <label>Code-barres palette</label>
+        <div class="hstack">
+          <input id="pd_code" name="code_barres" type="text" required />
+          <button type="button" class="btn" data-scan="pd_code">Scanner</button>
         </div>
 
-        <div class="row">
-          <label>Code-barres palette</label>
-          <div class="hstack">
-            <input id="pd_code" name="code_barres" type="text" required />
-            <button type="button" class="btn" id="btnPdBC">Depuis la galerie</button>
-          </div>
-          <input id="pd_bc_file" type="file" accept="image/*" hidden />
-          <div class="muted" id="pd_bc_status">Choisissez une photo nette du code-barres.</div>
-        </div>
-
-        <div class="row">
-          <label>Photo principale</label>
-          <div class="hstack">
-            <button id="btnPdPhotoCam" type="button" class="btn">Caméra</button>
-            <button id="btnPdPhotoGal" type="button" class="btn">Galerie</button>
-            <span id="pd_photo_label" class="muted">Aucune</span>
-          </div>
-          <input id="pd_photo_cam" type="file" accept="image/*" capture="environment" hidden />
-          <input id="pd_photo_gal" type="file" accept="image/*" hidden />
-          <input id="pd_photo_target" name="photo_principale" type="file" accept="image/*" hidden />
-        </div>
+        <label>Photo principale</label>
+        <input type="file" name="photo_principale" accept="image/*" capture="environment" />
 
         <fieldset>
-          <legend>Questions</legend>
+          <legend>Questions de contrôle</legend>
 
           <div class="qblock">
             <label>Cartons en bon état ?</label>
-            <div class="okko">
-              <label><input type="radio" name="cartons_etat" value="OK" checked> OK</label>
-              <label><input type="radio" name="cartons_etat" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="cartons_etat">
-              <input type="file" data-photofor="cartons_etat" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="cartons_etat" placeholder="Décrire le problème"></textarea>
+            <select name="cartons_etat">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="cartons_etat_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="cartons_etat_commentaire"></textarea>
             </div>
           </div>
 
           <div class="qblock">
             <label>Cerclage bien appliqué ?</label>
-            <div class="okko">
-              <label><input type="radio" name="cerclage" value="OK" checked> OK</label>
-              <label><input type="radio" name="cerclage" value="KO"> KO</label>
-            </div>
-            <div class="ko-extra" data-for="cerclage">
-              <input type="file" data-photofor="cerclage" accept="image/*" capture="environment" multiple />
-              <textarea data-commentfor="cerclage" placeholder="Décrire le problème"></textarea>
+            <select name="cerclage">
+              <option value="OK" selected>OK</option>
+              <option value="KO">Pas OK</option>
+            </select>
+            <div class="koDetails hidden">
+              <input type="file" name="cerclage_photos" accept="image/*" capture="environment" multiple />
+              <textarea name="cerclage_commentaire"></textarea>
             </div>
           </div>
         </fieldset>
 
-        <div class="actions">
-          <button class="btn primary" type="submit">📤 Envoyer</button>
-          <span class="result"></span>
-        </div>
+        <button type="submit" class="btn primary">📤 Envoyer</button>
       </form>
     </section>
 
-    <!-- KPI -->
-    <section id="tab-KPI" class="tab-pane">
+    <!-- =================== KPI =================== -->
+    <section id="tabKpi" class="tabContent">
       <h2>Tableau de bord KPI</h2>
-      <div class="kpi-filters">
-        <input type="date" id="kpi_from">
-        <input type="date" id="kpi_to">
-        <button id="btnKpi" class="btn">Afficher</button>
-        <button id="btnExport" class="btn">Export Excel</button>
-      </div>
-      <div id="kpiResults" class="kpi-results">—</div>
+      <div id="kpiResults">Chargement...</div>
     </section>
+
   </main>
 
-  <!-- LOADER -->
-  <div id="appLoader" class="loader">
-    <div class="loader-card">
-      <div class="loader-text">Traitement…</div>
-      <div class="loader-bar-wrap"><div class="loader-bar"></div></div>
-      <div class="loader-percent">0%</div>
+  <!-- =================== MODAL SCANNER =================== -->
+  <div id="scannerModal" class="scanner-modal" style="display:none">
+    <div class="scanner-box">
+      <h3>Scanner le code-barres</h3>
+      <video id="scannerVideo" playsinline autoplay muted style="width:100%;height:auto;background:#000;border-radius:10px"></video>
+      <div class="scanner-actions">
+        <button id="scannerStart" class="btn primary">Démarrer</button>
+        <button id="scannerStop" class="btn">Arrêter</button>
+        <button id="scannerClose" class="btn">Fermer</button>
+      </div>
+      <p class="hint">Visez le code-barres, éclairez la zone, distance 15–25 cm.</p>
     </div>
   </div>
 
