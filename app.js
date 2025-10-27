@@ -130,43 +130,39 @@ async function imageElementScaled(img, minWidth=1200){
 }
 
 async function decodeFileToBarcode(file){
-  // 1) API native si dispo (rapide)
+  // 1) Essayons d'abord la Web API native
   if ('BarcodeDetector' in window) {
-    try{
+    try {
       const bd = new window.BarcodeDetector({ formats: ['ean_13','code_128','code_39'] });
       const img = await fileToImage(file);
       const el  = await imageElementScaled(img, 1200);
-      const c   = document.createElement('canvas'); c.width=el.naturalWidth||el.width; c.height=el.naturalHeight||el.height;
-      c.getContext('2d').drawImage(el,0,0,c.width,c.height);
-      const blob= await new Promise(r=>c.toBlob(r,'image/png'));
-      const bmp = await createImageBitmap(blob);
+      const c=document.createElement('canvas'); c.width=el.width; c.height=el.height;
+      c.getContext('2d').drawImage(el,0,0,el.width,el.height);
+      const blob = await new Promise(r=>c.toBlob(r,'image/png'));
+      const bmp  = await createImageBitmap(blob);
       const codes = await bd.detect(bmp);
       if (codes && codes[0] && codes[0].rawValue) return String(codes[0].rawValue);
-    }catch(_){} // on tombera sur ZXing
+    } catch(e){ console.warn('BarcodeDetector échoué', e); }
   }
 
-  // 2) ZXing (UMD) — fonctionne sur iOS
-  const ZX = window.ZXingBrowser || window.ZXing || null;
-  if (!ZX) throw new Error('ZXing non chargé');
+  // 2) ZXing (chargement asynchrone)
+  let ZX = null;
+  try {
+    ZX = await window.ZXING_READY; // attend le chargement réel du bundle
+  } catch(e){
+    throw new Error('ZXing non chargé');
+  }
+  if (!ZX || !ZX.BrowserMultiFormatReader) throw new Error('ZXingBrowser non initialisé');
 
   const img = await fileToImage(file);
   const el  = await imageElementScaled(img, 1200);
 
-  // Bundle @zxing/browser expose BrowserMultiFormatReader avec decodeFromImage
-  const ReaderCtor = ZX.BrowserMultiFormatReader || ZX.MultiFormatReader;
-  if (!ReaderCtor) throw new Error('Lecteur ZXing introuvable');
-
-  const reader = new ReaderCtor();
-
-  try{
-    if (typeof reader.decodeFromImage === 'function') {
-      const res = await reader.decodeFromImage(el);
-      return res ? String(res.getText ? res.getText() : res.text || '') : '';
-    }
-    // Autre API: quelques bundles exposent decodeOnce depuis un device, pas depuis image
-    // Dans ce cas, on ne peut pas décoder l’image — on renvoie vide.
-    return '';
-  }catch{
+  try {
+    const reader = new ZX.BrowserMultiFormatReader();
+    const result = await reader.decodeFromImage(el);
+    return result ? String(result.getText ? result.getText() : result.text || '') : '';
+  } catch(e){
+    console.warn('ZXing decodeFromImage échoué', e);
     return '';
   }
 }
