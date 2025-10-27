@@ -394,6 +394,19 @@
   </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<!-- Modal Scanner (iPhone friendly) -->
+<div id="scannerModal" class="scanner-modal" aria-hidden="true" style="display:none">
+  <div class="scanner-box">
+    <h3>Scanner le code-barres</h3>
+    <video id="scannerVideo" playsinline autoplay muted style="width:100%;height:auto;border-radius:10px;background:#000"></video>
+    <div class="scanner-actions" style="display:flex;gap:.5rem;margin-top:.75rem">
+      <button id="scannerStart" class="btn primary" style="flex:1">Démarrer</button>
+      <button id="scannerStop" class="btn" style="flex:1">Arrêter</button>
+      <button id="scannerClose" class="btn" style="flex:1">Fermer</button>
+    </div>
+    <p id="scannerHint" style="margin-top:.5rem;font-size:.9rem;opacity:.8">Astuce : visez bien, éclairez la zone, restez à ~15–25 cm.</p>
+  </div>
+</div>
 
 </body>
 </html>
