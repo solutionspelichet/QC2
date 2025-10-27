@@ -1,0 +1,8 @@
+{
+  "WEBAPP_BASE_URL": "https://script.google.com/macros/s/AKfycbyy826nPPtVW-HpyUSqzhJ-Eoq42_-rXhYHW3WXi3rT9cZ61dW264c7DDnfagnrXjM7/exec",
+    "RESIZE_ENABLED": true,
+  "MAX_IMAGE_DIM": 1600,
+  "OUTPUT_MIME": "image/jpeg",
+  "QUALITY": 0.85,
+  "MAX_FILE_SIZE_KB": 600
+}
