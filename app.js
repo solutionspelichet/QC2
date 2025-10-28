@@ -2,7 +2,7 @@
 (function(){
   if(!window.CONFIG){
     window.CONFIG = {
-      WEBAPP_BASE_URL: "", // <-- colle ici ton URL /exec
+      WEBAPP_BASE_URL: "https://script.google.com/macros/s/AKfycbyy826nPPtVW-HpyUSqzhJ-Eoq42_-rXhYHW3WXi3rT9cZ61dW264c7DDnfagnrXjM7/exec", // <-- colle ici ton URL /exec
       RESIZE_ENABLED: true,
       MAX_IMAGE_DIM: 1600,
       OUTPUT_MIME: "image/jpeg",
