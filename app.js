@@ -1,458 +1,533 @@
-/* Pelichet QC — app.js (Galerie pour code-barres, resize <= 600Ko, KPI, export) */
+/* =======================
+   Pelichet QC - Frontend
+   app.js (complet)
+   ======================= */
 
-/* ---------- Config / chargement config.json si présent ---------- */
-(function ensureConfig(){
-  window.CONFIG = window.CONFIG || {};
-  if (!window.CONFIG.__loadedFromJson__) {
-    fetch('config.json').then(r=>r.ok?r.json():null).then(c=>{
-      if (c) Object.assign(window.CONFIG, c);
-      window.CONFIG.__loadedFromJson__ = true;
-    }).catch(()=>{});
-  }
-  if (!window.CONFIG.WEBAPP_BASE_URL) {
-    const ls = localStorage.getItem('WEBAPP_BASE_URL');
-    if (ls) window.CONFIG.WEBAPP_BASE_URL = ls;
+/* ---------- CONFIG (unique) ---------- */
+(function initConfig(){
+  if(!window.CONFIG){
+    window.CONFIG = {
+      WEBAPP_BASE_URL: "",     // <-- colle ici l’URL /exec Apps Script
+      RESIZE_ENABLED: true,
+      MAX_IMAGE_DIM: 1600,     // plus petit côté max, pour limiter la taille
+      OUTPUT_MIME: "image/jpeg",
+      QUALITY: 0.85,           // qualité initiale (baissera si > 600 Ko)
+      MAX_FILE_SIZE_KB: 600
+    };
   }
 })();
 
 /* ---------- Helpers DOM ---------- */
-const qs = (s, r=document)=> r.querySelector(s);
-const qsa = (s, r=document)=> Array.from(r.querySelectorAll(s));
+const qs  = (sel, el=document)=> el.querySelector(sel);
+const qsa = (sel, el=document)=> Array.from(el.querySelectorAll(sel));
 
-/* ---------- Thème ---------- */
-function initTheme(){
-  const toggle = qs('#toggleTheme');
-  let theme = localStorage.getItem('theme') || (matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light');
-  document.documentElement.setAttribute('data-theme', theme);
-  const meta = qs('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', theme==='dark'?'#0f1115':'#ff6a00');
-  toggle?.addEventListener('click', ()=>{
-    theme = theme==='dark'?'light':'dark';
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-    if (meta) meta.setAttribute('content', theme==='dark'?'#0f1115':'#ff6a00');
-  });
-}
-
-/* ---------- Onglets ---------- */
-function initTabs(){
-  const tabs = qsa('.tabs .tab');
-  const panes = qsa('.tab-pane');
-  tabs.forEach(t=>{
-    t.addEventListener('click', ()=>{
-      tabs.forEach(x=>x.classList.remove('active'));
-      t.classList.add('active');
-      const id = 'tab-' + t.dataset.tab;
-      panes.forEach(p=>p.classList.remove('active'));
-      qs('#'+id)?.classList.add('active');
-      window.scrollTo({top:0,behavior:'smooth'});
-    });
-  });
+function todayStr(){
+  const d = new Date();
+  const p = n => (n<10?'0':'')+n;
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 }
 
 /* ---------- Loader ---------- */
-function showLoader(text='Traitement…'){
-  const el = qs('#appLoader'); if (!el) return;
-  el.querySelector('.loader-text').textContent = text;
-  el.querySelector('.loader-bar').style.width = '0%';
-  el.querySelector('.loader-percent').textContent = '0%';
-  el.classList.add('visible');
-}
-function hideLoader(){ qs('#appLoader')?.classList.remove('visible'); }
-function setLoaderProgress(loaded,total){
-  if (!total) return;
-  const p = Math.min(100, Math.round(loaded*100/total));
-  qs('#appLoader .loader-bar').style.width = p+'%';
-  qs('#appLoader .loader-percent').textContent = p+'%';
-}
-
-/* ---------- Service Worker ---------- */
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
-}
-
-/* ---------- Image utils + resize <= ~600Ko ---------- */
-function guessExtFromMime(m){ return m==='image/png'?'png':'jpg'; }
-async function fileToDataURL(file){
-  return await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=rej; fr.readAsDataURL(file);});
-}
-async function resizeDataUrl(srcDataUrl, maxDim=1600, outMime='image/jpeg', quality=0.85){
-  const img = await new Promise((resolve,reject)=>{ const im=new Image(); im.onload=()=>resolve(im); im.onerror=reject; im.src=srcDataUrl;});
-  const w0 = img.naturalWidth||img.width, h0 = img.naturalHeight||img.height;
-  if (!w0 || !h0) return { dataUrl: srcDataUrl, ext: guessExtFromMime(outMime) };
-  const ratio = w0/h0; let w=w0, h=h0;
-  if (Math.max(w0,h0)>maxDim){ if (w0>=h0){ w=maxDim; h=Math.round(maxDim/ratio);} else { h=maxDim; w=Math.round(maxDim*ratio);} }
-  const c=document.createElement('canvas'); c.width=w; c.height=h;
-  const ctx=c.getContext('2d'); ctx.imageSmoothingEnabled=true; ctx.imageSmoothingQuality='high';
-  ctx.drawImage(img,0,0,w,h);
-  let q=quality, dataUrl=c.toDataURL(outMime,q), size=Math.round((dataUrl.length*3)/4), tries=0;
-  const maxBytes=(window.CONFIG.MAX_FILE_SIZE_KB||600)*1024;
-  while(size>maxBytes && q>0.2 && tries<6){ q-=0.1; dataUrl=c.toDataURL(outMime,q); size=Math.round((dataUrl.length*3)/4); tries++; }
-  return { dataUrl, ext: guessExtFromMime(outMime) };
-}
-async function resizeFileIfNeeded(file){
-  const raw = await fileToDataURL(file);
-  if (!window.CONFIG.RESIZE_ENABLED) {
-    const ext=(file.name.split('.').pop()||'jpg').toLowerCase();
-    return { dataUrl: raw, ext };
+let _loaderCount = 0;
+function showLoader(msg){
+  let el = qs('#globalLoader');
+  if(!el){
+    el = document.createElement('div');
+    el.id = 'globalLoader';
+    el.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.4);z-index:99999;color:#fff;font:600 16px/1.2 system-ui';
+    el.innerHTML = `<div style="background:#111;padding:16px 18px;border-radius:12px;min-width:220px;text-align:center">
+      <div class="spinner" style="width:28px;height:28px;border-radius:50%;border:3px solid #999;border-top-color:#ff6a00;margin:0 auto 8px;animation:spin .8s linear infinite"></div>
+      <div id="loaderMsg">${msg||'Chargement...'}</div>
+    </div>
+    <style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
+    document.body.appendChild(el);
+  } else {
+    qs('#loaderMsg', el).textContent = msg || 'Chargement...';
   }
-  return await resizeDataUrl(raw, window.CONFIG.MAX_IMAGE_DIM||1600, window.CONFIG.OUTPUT_MIME||'image/jpeg', window.CONFIG.QUALITY||0.85);
+  el.style.display = 'flex';
+  _loaderCount++;
+}
+function hideLoader(){
+  _loaderCount = Math.max(0, _loaderCount-1);
+  const el = qs('#globalLoader');
+  if(el && _loaderCount===0) el.style.display = 'none';
 }
 
-/* ---------- ZXing (décodage depuis image de la galerie) ---------- */
-async function fileToImage(file){
-  return await new Promise((resolve,reject)=>{ const img=new Image(); img.onload=()=>resolve(img); img.onerror=reject; const fr=new FileReader(); fr.onload=()=>img.src=fr.result; fr.onerror=reject; fr.readAsDataURL(file); });
-}
-async function imageElementScaled(img, minWidth=1200){
-  return await new Promise(resolve=>{
-    const w0=img.naturalWidth||img.width||minWidth, h0=img.naturalHeight||img.height||minWidth;
-    const scale=Math.max(1, Math.ceil(minWidth/Math.max(1,w0)));
-    const w=w0*scale, h=h0*scale;
-    const c=document.createElement('canvas'); c.width=w; c.height=h;
-    c.getContext('2d').drawImage(img,0,0,w,h);
-    const out=new Image(); out.onload=()=>resolve(out); out.src=c.toDataURL('image/png');
-  });
-}
-async function fileToImage(file){
-  return await new Promise((resolve,reject)=>{
-    const img=new Image(); img.onload=()=>resolve(img); img.onerror=reject;
-    const fr=new FileReader(); fr.onload=()=>img.src=fr.result; fr.onerror=reject; fr.readAsDataURL(file);
-  });
-}
-async function imageElementScaled(img, minWidth=1200){
-  return await new Promise(resolve=>{
-    const w0=img.naturalWidth||img.width||minWidth, h0=img.naturalHeight||img.height||minWidth;
-    const scale=Math.max(1, Math.ceil(minWidth/Math.max(1,w0)));
-    const w=w0*scale, h=h0*scale;
-    const c=document.createElement('canvas'); c.width=w; c.height=h;
-    c.getContext('2d').drawImage(img,0,0,w,h);
-    const out=new Image(); out.onload=()=>resolve(out); out.src=c.toDataURL('image/png');
+/* ---------- Fetch utils ---------- */
+function fetchWithTimeout(url, options={}, timeoutMs=30000){
+  return new Promise((resolve, reject)=>{
+    const ctrl = new AbortController();
+    const id = setTimeout(()=>{ ctrl.abort(); reject(new Error('Timeout')); }, timeoutMs);
+    fetch(url, {...options, signal: ctrl.signal}).then(r=>{ clearTimeout(id); resolve(r); }).catch(err=>{ clearTimeout(id); reject(err); });
   });
 }
 
-async function decodeFileToBarcode(file){
-  // 1) Essayons d'abord la Web API native
-  if ('BarcodeDetector' in window) {
-    try {
-      const bd = new window.BarcodeDetector({ formats: ['ean_13','code_128','code_39'] });
-      const img = await fileToImage(file);
-      const el  = await imageElementScaled(img, 1200);
-      const c=document.createElement('canvas'); c.width=el.width; c.height=el.height;
-      c.getContext('2d').drawImage(el,0,0,el.width,el.height);
-      const blob = await new Promise(r=>c.toBlob(r,'image/png'));
-      const bmp  = await createImageBitmap(blob);
-      const codes = await bd.detect(bmp);
-      if (codes && codes[0] && codes[0].rawValue) return String(codes[0].rawValue);
-    } catch(e){ console.warn('BarcodeDetector échoué', e); }
-  }
-
-  // 2) ZXing (chargement asynchrone)
-  let ZX = null;
-  try {
-    ZX = await window.ZXING_READY; // attend le chargement réel du bundle
-  } catch(e){
-    throw new Error('ZXing non chargé');
-  }
-  if (!ZX || !ZX.BrowserMultiFormatReader) throw new Error('ZXingBrowser non initialisé');
-
-  const img = await fileToImage(file);
-  const el  = await imageElementScaled(img, 1200);
-
-  try {
-    const reader = new ZX.BrowserMultiFormatReader();
-    const result = await reader.decodeFromImage(el);
-    return result ? String(result.getText ? result.getText() : result.text || '') : '';
-  } catch(e){
-    console.warn('ZXing decodeFromImage échoué', e);
-    return '';
-  }
+/* ---------- Tabs ---------- */
+function setupTabs(){
+  const tabs = qsa('nav .tab');
+  const sections = qsa('.tabContent');
+  tabs.forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      tabs.forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      const t = btn.getAttribute('data-target');
+      sections.forEach(s=> s.classList.toggle('active', s.id === t));
+      // auto-chargement KPI
+      if(t==='tabKpi') loadAndRenderKpi().catch(()=>{});
+    });
+  });
 }
 
-/* ---------- KO blocks ---------- */
-function initKoBlocks(){
-  function refreshFor(container){
-    qsa('.ko-extra', container).forEach(box=>{
-      const name=box.getAttribute('data-for');
-      const checked=qs(`input[name="${name}"]:checked`, container);
-      box.style.display = (checked && checked.value==='KO')?'block':'none';
+/* ---------- Theme ---------- */
+function setupTheme(){
+  const t = localStorage.getItem('qc_theme') || 'dark';
+  document.documentElement.dataset.theme = t;
+  const toggle = qs('#themeToggle');
+  if(toggle){
+    toggle.addEventListener('click', ()=>{
+      const cur = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = cur;
+      localStorage.setItem('qc_theme', cur);
     });
   }
-  qsa('.okko input[type=radio]').forEach(r=>{
-    r.addEventListener('change', ()=> refreshFor(r.closest('form')||document));
+}
+
+/* ---------- Dates & defaults ---------- */
+function setDefaultDatesAndOK(){
+  qsa('input[type="date"]').forEach(inp=>{
+    if(!inp.value) inp.value = todayStr();
   });
-  qsa('form.qc-form').forEach(f=>refreshFor(f));
+  // tous les selects OK par défaut
+  qsa('form.qcForm select').forEach(sel=>{
+    if(!sel.value) sel.value = 'OK';
+  });
 }
 
-/* ---------- Hooks Caméra/Galerie -> cible (photo principale) ---------- */
-function hookCameraGalleryPair(btnCamId, camId, btnGalId, galId, targetId, labelId){
-  const btnCam=qs('#'+btnCamId), cam=qs('#'+camId), btnGal=qs('#'+btnGalId), gal=qs('#'+galId), tgt=qs('#'+targetId), lbl=qs('#'+labelId);
-  function copy(src){
-    if (!src.files||!src.files[0]) return;
-    const dt=new DataTransfer(); dt.items.add(src.files[0]); tgt.files=dt.files;
-    if (lbl) lbl.textContent=src.files[0].name;
+/* ---------- KO sections show/hide + requirements ---------- */
+function setupKOSections(){
+  qsa('form.qcForm .qblock').forEach(block=>{
+    const sel = qs('select', block);
+    const details = qs('.koDetails', block);
+    if(!sel || !details) return;
+
+    const toggle = ()=>{
+      const isKO = (sel.value || '').toUpperCase()==='KO';
+      details.classList.toggle('hidden', !isKO);
+      const files = qsa('input[type="file"]', details);
+      const ta = qs('textarea', details);
+      files.forEach(f=> f.required = isKO);
+      if(ta) ta.required = isKO;
+    };
+    sel.addEventListener('change', toggle);
+    toggle(); // init
+  });
+}
+
+/* ---------- Image -> dataURL (<= 600 Ko) ---------- */
+function fileToDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const fr = new FileReader();
+    fr.onload = () => resolve(fr.result);
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+function imageElementFromFile(file){
+  return new Promise((resolve, reject)=>{
+    const fr = new FileReader();
+    fr.onload = ()=>{
+      const img = new Image();
+      img.onload = ()=> resolve(img);
+      img.onerror = reject;
+      img.src = fr.result;
+    };
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+async function resizeToLimit(file){
+  // Si la compression est désactivée, renvoie base64 direct
+  if(!CONFIG.RESIZE_ENABLED) return { dataUrl: await fileToDataUrl(file), ext: guessExt(file) };
+
+  const img = await imageElementFromFile(file);
+
+  const maxDim = CONFIG.MAX_IMAGE_DIM || 1600;
+  const mime   = CONFIG.OUTPUT_MIME || 'image/jpeg';
+
+  let {w,h} = { w: img.naturalWidth || img.width, h: img.naturalHeight || img.height };
+  let scale = 1;
+  if(w>h && w>maxDim) scale = maxDim / w;
+  if(h>=w && h>maxDim) scale = maxDim / h;
+  if(scale<=0) scale = 1;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(w*scale));
+  canvas.height= Math.max(1, Math.round(h*scale));
+  const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  // tente qualité décroissante jusqu’à <= MAX_FILE_SIZE_KB
+  const maxKB = CONFIG.MAX_FILE_SIZE_KB || 600;
+  let q = CONFIG.QUALITY || 0.85;
+  let dataUrl = canvas.toDataURL(mime, q);
+
+  const toKB = (d)=> Math.round((d.length * 3 / 4) / 1024); // approx base64->bytes
+  let kb = toKB(dataUrl);
+  while(kb > maxKB && q > 0.4){
+    q = Math.max(0.4, q - 0.08);
+    dataUrl = canvas.toDataURL(mime, q);
+    kb = toKB(dataUrl);
   }
-  btnCam?.addEventListener('click', ()=> cam?.click());
-  btnGal?.addEventListener('click', ()=> gal?.click());
-  cam?.addEventListener('change', ()=> copy(cam));
-  gal?.addEventListener('change', ()=> copy(gal));
+  return { dataUrl, ext: mime.split('/')[1] || 'jpg' };
+}
+function guessExt(file){
+  const t = (file && file.type) || '';
+  if(t.includes('png')) return 'png';
+  if(t.includes('webp')) return 'webp';
+  if(t.includes('heic')||t.includes('heif')) return 'heic';
+  return 'jpg';
+}
+async function filesToDataUrlsLimited(fileList){
+  const out = [];
+  for(const f of Array.from(fileList||[])){
+    const packed = await resizeToLimit(f);
+    out.push(packed);
+  }
+  return out;
 }
 
-/* ---------- Lecture code-barres depuis galerie (3 formulaires) ---------- */
-function initBarcodeFromGallery(){
-  function wire(btnSel, fileSel, targetSel, statusSel){
-    const btn=qs(btnSel), fi=qs(fileSel), target=qs(targetSel), status=qs(statusSel);
-    if(!btn||!fi||!target) return;
-    btn.addEventListener('click', ()=> fi.click());
-    fi.addEventListener('change', async ()=>{
-      if(!fi.files || !fi.files[0]) return;
-      status && (status.textContent='Décodage en cours…');
-      try{
-        const code = await decodeFileToBarcode(fi.files[0]);
-        if (code) {
-          target.value = code;
-          status && (status.textContent='✅ Code détecté : '+code);
-        } else {
-          status && (status.textContent='❌ Code non détecté. Essayez une autre photo (netteté, cadrage, lumière).');
-          alert('Code non détecté. Choisissez une photo nette, bien cadrée et éclairée.');
-        }
-      }catch(e){
-        status && (status.textContent='❌ Erreur décodage');
-        alert('Erreur pendant le décodage: '+String(e.message||e));
+/* ---------- Build payload from form ---------- */
+async function buildPayload(form){
+  const type = form.dataset.type;
+  const date = qs('input[name="date_saisie"]', form).value.trim();
+  const code = qs('input[name="code_barres"]', form).value.trim();
+
+  // Photo principale
+  let photo_principale = null;
+  const mainFile = qs('input[name="photo_principale"]', form).files[0];
+  if(mainFile){
+    photo_principale = await resizeToLimit(mainFile);
+  }
+
+  // Questions
+  const answers = [];
+  qsa('.qblock', form).forEach(block=>{
+    const sel = qs('select', block);
+    if(!sel) return;
+    const field = sel.name;
+    const value = sel.value || 'OK';
+    const details = qs('.koDetails', block);
+    let photos = [];
+    let commentaire = '';
+    if(value.toUpperCase()==='KO' && details){
+      const files = qsa('input[type="file"]', details).flatMap(i=> Array.from(i.files||[]));
+      if(files.length){
+        // multiples photos KO
+        photos = await filesToDataUrlsLimited(files);
       }
-    });
-  }
-  wire('#btnCartonsBC', '#cartons_bc_file', '#cartons_code', '#cartons_bc_status');
-  wire('#btnPaBC', '#pa_bc_file', '#pa_code', '#pa_bc_status');
-  wire('#btnPdBC', '#pd_bc_file', '#pd_code', '#pd_bc_status');
+      const ta = qs('textarea', details);
+      if(ta) commentaire = (ta.value||'').trim();
+    }
+    answers.push({ field, value, photos, commentaire });
+  });
+
+  return {
+    type,
+    payload: {
+      date_jour: date,
+      code_barres: code,
+      photo_principale,
+      answers
+    }
+  };
 }
 
-/* ---------- Réseau (timeout + fallback XHR Android) ---------- */
-function fetchWithTimeout(input, init={}, timeoutMs=30000){
-  return new Promise((resolve,reject)=>{
-    const ctrl=new AbortController(); const id=setTimeout(()=>{ctrl.abort();reject(new Error('Timeout réseau'));},timeoutMs);
-    fetch(input,{...init,signal:ctrl.signal,redirect:'follow',mode:'cors'})
-      .then(r=>{clearTimeout(id);resolve(r);}).catch(e=>{clearTimeout(id);reject(e);});
-  });
-}
-function postFormDataXHR(url, formData, onProgress){
-  return new Promise((resolve,reject)=>{
-    const xhr=new XMLHttpRequest(); xhr.open('POST', url, true); xhr.responseType='json';
-    xhr.onload=()=>{ const body=xhr.response || (xhr.responseText?JSON.parse(xhr.responseText):null); (xhr.status>=200&&xhr.status<300)?resolve(body):reject(new Error('HTTP '+xhr.status)); };
-    xhr.onerror=()=>reject(new Error('Erreur réseau XHR')); xhr.ontimeout=()=>reject(new Error('Timeout XHR'));
-    if (xhr.upload && typeof onProgress==='function'){ xhr.upload.onprogress=(e)=>{ if(e.lengthComputable) onProgress(e.loaded,e.total); }; }
-    xhr.send(formData);
-  });
-}
-async function sendFormToBackend(fd){
-  const baseUrl=window.CONFIG.WEBAPP_BASE_URL; if(!baseUrl) throw new Error('URL backend non configurée');
+/* ---------- Submit handling ---------- */
+async function postQC(form){
+  const base = CONFIG.WEBAPP_BASE_URL;
+  if(!base){ alert("URL backend non configurée.\nRenseigne CONFIG.WEBAPP_BASE_URL dans app.js"); throw new Error('No backend'); }
+  const type = form.dataset.type;
+
+  const url = new URL(base);
+  url.searchParams.set('route','qc');
+  url.searchParams.set('type', type);
+
+  const body = await buildPayload(form);
+  const btn = qs('button[type="submit"]', form);
+  btn && (btn.disabled = true);
+
+  showLoader('Envoi en cours…');
   try{
-    const r=await fetchWithTimeout(baseUrl,{method:'POST',body:fd},45000);
-    let js=null; try{ js=await r.json(); }catch{ js=JSON.parse(await r.text()); }
-    return js;
-  }catch(_){ return await postFormDataXHR(baseUrl, fd, (l,t)=> setLoaderProgress(l,t)); }
+    const res = await fetchWithTimeout(url.toString(), {
+      method:'POST',
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded;charset=UTF-8' },
+      body: 'payload=' + encodeURIComponent(JSON.stringify(body.payload))
+    }, 60000);
+    const js = await res.json();
+    if(!js.ok){
+      alert('Erreur serveur: ' + (js.error||'inconnue'));
+      return;
+    }
+    // succès
+    alert('✔ Enregistré dans ' + (js.sheet || type));
+    // reset “KO détails”, mais pas la date
+    qsa('select', form).forEach(s=> s.value='OK');
+    qsa('.koDetails', form).forEach(d=>{
+      d.classList.add('hidden');
+      qsa('input[type="file"]', d).forEach(i=> i.value='');
+      const ta = qs('textarea', d); if(ta) ta.value='';
+    });
+    const code = qs('input[name="code_barres"]', form); if(code) code.value='';
+    const photo = qs('input[name="photo_principale"]', form); if(photo) photo.value='';
+  }catch(err){
+    alert('Échec réseau: ' + String(err && err.message || err));
+  }finally{
+    hideLoader();
+    btn && (btn.disabled = false);
+  }
 }
 
-/* ---------- Formulaires ---------- */
-function defaultTodayOnDates(){
-  const today = new Date().toISOString().slice(0,10);
-  qsa('form.qc-form input[type="date"]').forEach(i=>{ if(!i.value) i.value=today; });
-}
-function ensureOkDefault(){
-  qsa('form.qc-form').forEach(f=>{
-    qsa('.okko input[value="OK"]', f).forEach(r=>{ r.checked = true; });
-  });
-}
-function initForms(){
-  qsa('.qc-form').forEach(form=>{
-    form.addEventListener('submit', async (ev)=>{
-      ev.preventDefault();
-      const type=form.dataset.type; const result=qs('.result', form); if(result) result.textContent='';
-      const date=qs('input[name="date_jour"]', form).value;
-      const code=qs('input[name="code_barres"]', form).value.trim();
-      if(!date||!code){ alert('Date et code-barres requis.'); return; }
-      showLoader('Envoi en cours…');
+/* ---------- Form bindings ---------- */
+function setupForms(){
+  qsa('form.qcForm').forEach(form=>{
+    form.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      // validations basiques
+      const date = qs('input[name="date_saisie"]', form).value.trim();
+      const code = qs('input[name="code_barres"]', form).value.trim();
+      if(!date || !code){ alert('Date et code-barres sont obligatoires.'); return; }
 
-      try{
-        // Photo principale
-        let main=null; 
-        const target = form.querySelector('input[name="photo_principale"]') || qs('#cartons_photo_target') || qs('#pa_photo_target') || qs('#pd_photo_target');
-        const theFile = target?.files?.[0] || null;
-        if (theFile) main = await resizeFileIfNeeded(theFile);
-
-        // Questions
-        const questionsMap = {
-          Cartons: ['callage_papier','intercalaires_livres','ordre_colonnes','scotch','depoussierage'],
-          Palettes_Avant: ['cartons_etat','intercalaires_cartons','ordre_cartons','cerclage','stabilite'],
-          Palettes_Destination: ['cartons_etat','cerclage']
-        };
-        const questions = questionsMap[type]||[];
-
-        const answers=[];
-        for(const q of questions){
-          const v=(qs(`input[name="${q}"]:checked`, form)||{}).value;
-          if(!v){ alert('Veuillez répondre à toutes les questions.'); hideLoader(); return; }
-          let photos=[], commentaire='';
-          if (v==='KO'){
-            const fi=qs(`input[data-photofor="${q}"]`, form);
-            const ta=qs(`textarea[data-commentfor="${q}"]`, form);
-            commentaire=(ta?.value||'').trim();
-            if(!fi || !fi.files || fi.files.length===0 || !commentaire){ alert(`Pour "${q}", en KO il faut au moins 1 photo + un commentaire.`); hideLoader(); return; }
-            for(const f of fi.files){ photos.push(await resizeFileIfNeeded(f)); }
-          }
-          answers.push({ field:q, value:v, photos, commentaire });
+      // si KO quelque part, photo+commentaire requis (déjà géré via required, mais on double check)
+      let ok = true;
+      qsa('.qblock', form).forEach(block=>{
+        const sel = qs('select', block);
+        const isKO = (sel.value||'').toUpperCase()==='KO';
+        if(isKO){
+          const d = qs('.koDetails', block);
+          const hasFile = qsa('input[type="file"]', d).some(i=> (i.files&&i.files.length>0));
+          const ta = qs('textarea', d);
+          const hasComment = ta && ta.value.trim().length>0;
+          if(!hasFile || !hasComment) ok = false;
         }
+      });
+      if(!ok){ alert('Pour chaque KO: photo(s) et commentaire sont obligatoires.'); return; }
 
-        const payload={ date_jour:date, type, code_barres:code, photo_principale:main, answers };
-        const fd=new FormData(); fd.append('route','qc'); fd.append('type',type); fd.append('payload', JSON.stringify(payload));
-        const js=await sendFormToBackend(fd);
-        if(!js||!js.ok) throw new Error((js&&js.error)||'Erreur serveur');
-        result.textContent='✅ Enregistrement réussi';
-        form.reset(); defaultTodayOnDates(); ensureOkDefault(); initKoBlocks();
-      }catch(e){ result.textContent='❌ '+String(e.message||e); }
-      finally{ hideLoader(); }
+      await postQC(form);
     });
   });
 }
 
 /* ---------- KPI ---------- */
-let CHARTS=[];
-function initKpi(){
-  qs('#btnKpi')?.addEventListener('click', loadAndRenderKpi);
-  qs('#btnExport')?.addEventListener('click', doExportXlsx);
-}
+let CHARTS = [];
 async function loadAndRenderKpi(){
-  const base=window.CONFIG.WEBAPP_BASE_URL; if(!base){ alert('URL backend non configurée'); return;}
-  const url=new URL(base); url.searchParams.set('route','kpi');
-  const f=qs('#kpi_from').value, t=qs('#kpi_to').value; if(f) url.searchParams.set('from',f); if(t) url.searchParams.set('to',t);
-  const box=qs('#kpiResults'); box.textContent='Chargement KPI…'; showLoader('Chargement KPI…');
+  const base = CONFIG.WEBAPP_BASE_URL;
+  if(!base){ qs('#kpiResults').textContent = 'Backend non configuré.'; return; }
+
+  const url = new URL(base);
+  url.searchParams.set('route','kpi');
+
+  const box = qs('#kpiResults'); box.textContent = 'Chargement KPI…';
+  showLoader('Chargement KPI…');
   try{
-    const js=await fetchWithTimeout(url.toString(),{},30000).then(r=>r.json());
-    if(!js.ok){ box.textContent='Erreur KPI'; return; }
+    const js = await fetchWithTimeout(url.toString(), {}, 30000).then(r=>r.json());
+    if(!js.ok){ box.textContent = 'Erreur KPI: ' + (js.error||'inconnue'); return; }
     renderKpi(js.kpi);
-  }catch{ box.textContent='Erreur KPI'; } finally{ hideLoader(); }
+  }catch(e){
+    box.textContent = 'Erreur KPI réseau.';
+  }finally{
+    hideLoader();
+  }
 }
-function doExportXlsx(){
-  const base=window.CONFIG.WEBAPP_BASE_URL; if(!base){ alert('URL backend non configurée'); return;}
-  const url=new URL(base); url.searchParams.set('route','export');
-  const f=qs('#kpi_from').value, t=qs('#kpi_to').value; if(f) url.searchParams.set('from',f); if(t) url.searchParams.set('to',t);
-  showLoader('Préparation export…');
-  fetchWithTimeout(url.toString(),{},45000).then(r=>r.json()).then(js=>{
-    if(!js.ok){ alert('Export échoué'); return; }
-    window.open(js.directDownloadUrl||js.webViewLink,'_blank');
-  }).catch(()=> alert('Export échoué')).finally(hideLoader);
-}
+
 function renderKpi(kpi){
-  CHARTS.forEach(c=>{ try{c.destroy();}catch{} }); CHARTS=[];
-  const wrap=qs('#kpiResults'); wrap.innerHTML='';
-  const TYPES=['Cartons','Palettes_Avant','Palettes_Destination'];
-  const empty=()=>({ summary:{ total_entries:0, entries_with_any_KO:0, entries_with_any_KO_pct:0, total_KO_items:0, avg_KO_per_entry:0 }, per_question:{}, by_date:[] });
+  // clean old charts
+  CHARTS.forEach(c=>{ try{ c.destroy(); }catch{} });
+  CHARTS = [];
+  const wrap = qs('#kpiResults');
+  wrap.innerHTML = '';
+
+  const TYPES = ['Cartons','Palettes_Avant','Palettes_Destination'];
+  const empty = ()=>({
+    summary:{ total_entries:0, entries_with_any_KO:0, entries_with_any_KO_pct:0, total_KO_items:0, avg_KO_per_entry:0 },
+    per_question:{},
+    by_date:[]
+  });
 
   TYPES.forEach(t=>{
-    const obj=(kpi&&kpi[t])?kpi[t]:empty();
-    const sum=obj.summary||empty().summary; const perQ=obj.per_question||{}; const series=Array.isArray(obj.by_date)?obj.by_date:[];
-    const cardS=document.createElement('div'); cardS.className='kpi-card'; cardS.innerHTML=`
+    const obj = (kpi && kpi[t]) ? kpi[t] : empty();
+    const sum = obj.summary || empty().summary;
+    const perQ = obj.per_question || {};
+    const series = Array.isArray(obj.by_date) ? obj.by_date : [];
+
+    // synthèse
+    const cardS = document.createElement('div');
+    cardS.className = 'kpi-card card';
+    cardS.innerHTML = `
       <h3>${t} — Synthèse</h3>
       <div class="kpi-legend">
-        <strong>Contrôles</strong> : ${sum.total_entries||0}
-        &nbsp;|&nbsp;<strong>≥1 KO</strong> : ${sum.entries_with_any_KO||0} (${sum.entries_with_any_KO_pct||0}%)
-        &nbsp;|&nbsp;<strong>Total KO</strong> : ${sum.total_KO_items||0}
-        &nbsp;|&nbsp;<strong>KO moyens/entrée</strong> : ${sum.avg_KO_per_entry||0}
+        <strong>Contrôles</strong> : ${sum.total_entries}
+        &nbsp;|&nbsp;<strong>≥1 KO</strong> : ${sum.entries_with_any_KO} (${sum.entries_with_any_KO_pct}%)
+        &nbsp;|&nbsp;<strong>Total KO</strong> : ${sum.total_KO_items}
+        &nbsp;|&nbsp;<strong>KO moyens/entrée</strong> : ${sum.avg_KO_per_entry}
       </div>`;
     wrap.appendChild(cardS);
 
+    // tableau questions
     const rows = Object.keys(perQ).map(q=>{
-      const it=perQ[q]||{OK:0,KO:0,ko_pct:0};
+      const it = perQ[q] || {OK:0,KO:0,ko_pct:0};
       return `<tr><td>${q}</td><td>${it.OK}</td><td>${it.KO}</td><td>${it.ko_pct}%</td></tr>`;
     }).join('');
-    const cardT=document.createElement('div'); cardT.className='kpi-card'; cardT.innerHTML=`
+    const cardT = document.createElement('div');
+    cardT.className = 'kpi-card card';
+    cardT.innerHTML = `
       <h3>${t} — Par point (OK vs KO)</h3>
-      <table class="kpi"><thead><tr><th>Point</th><th>OK</th><th>KO</th><th>% KO</th></tr></thead><tbody>${rows||'<tr><td colspan="4">Aucune donnée</td></tr>'}</tbody></table>`;
+      <table class="kpi">
+        <thead><tr><th>Point</th><th>OK</th><th>KO</th><th>% KO</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4">Aucune donnée</td></tr>'}</tbody>
+      </table>`;
     wrap.appendChild(cardT);
 
-    const labels=series.map(s=>s.date), taux=series.map(s=>s.taux_ko_pct);
-    const cardL=document.createElement('div'); cardL.className='kpi-card'; cardL.innerHTML=`<h3>${t} — Taux KO % par jour</h3><canvas></canvas>`;
-    wrap.appendChild(cardL);
-    if (typeof Chart!=='undefined'){
-      const style=getComputedStyle(document.documentElement);
-      const ctx=cardL.querySelector('canvas').getContext('2d');
-      const ch=new Chart(ctx,{
+    // graph % KO par jour
+    const labels = series.map(s=>s.date);
+    const data = series.map(s=>s.taux_ko_pct);
+    const cardG = document.createElement('div');
+    cardG.className = 'kpi-card card';
+    cardG.innerHTML = `<h3>${t} — Taux KO % par jour</h3><div class="chart-wrap"><canvas></canvas></div>`;
+    wrap.appendChild(cardG);
+
+    if(typeof Chart!=='undefined'){
+      const ctx = qs('canvas', cardG).getContext('2d');
+      const ch = new Chart(ctx,{
         type:'line',
-        data:{ labels, datasets:[{ label:'Taux KO %', data:taux, tension:0.2, fill:false, pointRadius:3 }] },
+        data:{
+          labels,
+          datasets:[{ label:'Taux KO %', data, tension:0.2, fill:false, pointRadius:3 }]
+        },
         options:{
-          responsive:true, maintainAspectRatio:false, animation:false,
+          responsive:true,
+          maintainAspectRatio:false,
+          animation:false,
+          transitions:{ active:{ animation:{ duration:0 } } },
           scales:{
-            x:{ ticks:{ color:style.getPropertyValue('--muted') }, grid:{ color:'rgba(127,127,127,0.2)' } },
-            y:{ beginAtZero:true, ticks:{ color:style.getPropertyValue('--muted'), callback:v=>`${v}%` }, grid:{ color:'rgba(127,127,127,0.2)' } }
+            y:{ beginAtZero:true, ticks:{ callback:v=>`${v}%` } }
           },
-          plugins:{ legend:{ labels:{ color:style.getPropertyValue('--text') } }, tooltip:{ animation:false } }
+          plugins:{ legend:{ display:false }, tooltip:{ animation:false } }
         }
       });
       CHARTS.push(ch);
     } else {
-      const p=document.createElement('p'); p.textContent='⚠️ Chart.js non chargé.'; cardL.appendChild(p);
+      const p = document.createElement('p'); p.textContent='⚠️ Chart.js non chargé.'; cardG.appendChild(p);
     }
   });
 
-  const total=(kpi?.Cartons?.summary?.total_entries||0)+(kpi?.Palettes_Avant?.summary?.total_entries||0)+(kpi?.Palettes_Destination?.summary?.total_entries||0);
-  if (!total){ const p=document.createElement('p'); p.textContent='Aucune donnée pour la période choisie.'; wrap.appendChild(p); }
+  const total = (kpi?.Cartons?.summary?.total_entries||0)+(kpi?.Palettes_Avant?.summary?.total_entries||0)+(kpi?.Palettes_Destination?.summary?.total_entries||0);
+  if(total===0){
+    const p = document.createElement('p'); p.textContent='Aucune donnée disponible.'; wrap.appendChild(p);
+  }
+}
+
+/* ---------- Scanner (iPhone-friendly) ---------- */
+let _scanner = { stream:null, reader:null, targetInputId:null, running:false };
+
+function isIOS(){
+  return /iP(hone|ad|od)/.test(navigator.platform) || (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
+}
+function openScannerFor(targetInputId){
+  _scanner.targetInputId = targetInputId;
+  const modal = qs('#scannerModal'); if(modal) modal.style.display='grid';
+}
+function closeScanner(){
+  stopScanner();
+  const modal = qs('#scannerModal'); if(modal) modal.style.display='none';
+}
+async function startScanner(){
+  try{
+    if(!_scanner.reader){
+      if(window.ZXingBrowser && ZXingBrowser.BrowserMultiFormatReader){
+        _scanner.reader = new ZXingBrowser.BrowserMultiFormatReader();
+      }else if(window.ZXing && ZXing.BrowserMultiFormatReader){
+        _scanner.reader = new ZXing.BrowserMultiFormatReader(); // fallback nom
+      }else{
+        alert("Librairie ZXing non chargée.");
+        return;
+      }
+    }
+    const video = qs('#scannerVideo');
+    if(!video){ alert('Video non trouvée'); return; }
+    video.setAttribute('playsinline','true'); video.muted = true;
+
+    const constraints = {
+      audio:false,
+      video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
+    };
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    _scanner.stream = stream;
+    video.srcObject = stream;
+    await video.play();
+
+    const hints = new Map();
+    const NS = (window.ZXingBrowser && ZXingBrowser) || (window.ZXing && ZXing);
+    hints.set(NS.DecodeHintType.POSSIBLE_FORMATS, [
+      NS.BarcodeFormat.EAN_13,
+      NS.BarcodeFormat.CODE_128,
+      NS.BarcodeFormat.CODE_39
+    ]);
+    _scanner.reader.setHints && _scanner.reader.setHints(hints);
+    _scanner.running = true;
+
+    const tick = async ()=>{
+      if(!_scanner.running) return;
+      try{
+        // Certains builds exigent deviceId; ici on laisse "undefined" pour prendre la caméra active
+        const res = await _scanner.reader.decodeOnceFromVideoDevice(undefined, 'scannerVideo');
+        if(res){
+          const text = (res.text || (res.getText && res.getText()) || '').trim();
+          if(text){
+            const input = document.getElementById(_scanner.targetInputId);
+            if(input) input.value = text;
+            closeScanner();
+            return;
+          }
+        }
+      }catch(_){ /* ignore, on relance */ }
+      setTimeout(tick, 250);
+    };
+    setTimeout(tick, 250);
+
+  }catch(err){
+    alert("Caméra non accessible.\n- Autorise l’accès Caméra dans Safari.\n- Si PWA, teste dans Safari direct.\nDétail: " + (err && err.message || err));
+    stopScanner();
+  }
+}
+function stopScanner(){
+  _scanner.running = false;
+  try{ _scanner.reader && _scanner.reader.reset && _scanner.reader.reset(); }catch(_){}
+  if(_scanner.stream){
+    _scanner.stream.getTracks().forEach(t=>{ try{ t.stop(); }catch(_){} });
+    _scanner.stream = null;
+  }
 }
 
 /* ---------- Init ---------- */
 document.addEventListener('DOMContentLoaded', ()=>{
-  if (window.__QC_INIT__) return; window.__QC_INIT__=true;
+  setupTabs();
+  setupTheme();
+  setDefaultDatesAndOK();
+  setupKOSections();
+  setupForms();
 
-  initTheme(); initTabs(); initKoBlocks();
-  // Dates par défaut + OK cochés
-  (function(){ const today=new Date().toISOString().slice(0,10); qsa('form.qc-form input[type="date"]').forEach(i=>{ if(!i.value) i.value=today; }); })();
-  (function(){ qsa('form.qc-form').forEach(f=> qsa('.okko input[value="OK"]', f).forEach(r=> r.checked=true)); })();
+  // Boutons “Scanner”
+  qsa('button[data-scan]').forEach(btn=>{
+    btn.addEventListener('click', ()=> openScannerFor(btn.getAttribute('data-scan')));
+  });
+  // Modal controls
+  const bStart = qs('#scannerStart'), bStop = qs('#scannerStop'), bClose = qs('#scannerClose');
+  if(bStart) bStart.addEventListener('click', startScanner);
+  if(bStop)  bStop.addEventListener('click', stopScanner);
+  if(bClose) bClose.addEventListener('click', closeScanner);
 
-  // Photo principale (caméra/galerie)
-  function hookPair(btnCamId, camId, btnGalId, galId, targetId, labelId){
-    const btnCam=qs('#'+btnCamId), cam=qs('#'+camId), btnGal=qs('#'+btnGalId), gal=qs('#'+galId), tgt=qs('#'+targetId), lbl=qs('#'+labelId);
-    function copy(src){
-      if (!src.files||!src.files[0]) return;
-      const dt=new DataTransfer(); dt.items.add(src.files[0]); tgt.files=dt.files;
-      if (lbl) lbl.textContent=src.files[0].name;
-    }
-    btnCam?.addEventListener('click', ()=> cam?.click());
-    btnGal?.addEventListener('click', ()=> gal?.click());
-    cam?.addEventListener('change', ()=> copy(cam));
-    gal?.addEventListener('change', ()=> copy(gal));
+  // charge KPI si onglet actif au chargement
+  if(qs('#tabKpi').classList.contains('active')){
+    loadAndRenderKpi().catch(()=>{});
   }
-  hookPair('btnCartonsPhotoCam','cartons_photo_cam','btnCartonsPhotoGal','cartons_photo_gal','cartons_photo_target','cartons_photo_label');
-  hookPair('btnPaPhotoCam','pa_photo_cam','btnPaPhotoGal','pa_photo_gal','pa_photo_target','pa_photo_label');
-  hookPair('btnPdPhotoCam','pd_photo_cam','btnPdPhotoGal','pd_photo_gal','pd_photo_target','pd_photo_label');
-
-  // Code-barres depuis galerie
-  (function initBarcodeFromGallery(){
-    function wire(btnSel, fileSel, targetSel, statusSel){
-      const btn=qs(btnSel), fi=qs(fileSel), target=qs(targetSel), status=qs(statusSel);
-      if(!btn||!fi||!target) return;
-      btn.addEventListener('click', ()=> fi.click());
-      fi.addEventListener('change', async ()=>{
-        if(!fi.files || !fi.files[0]) return;
-        status && (status.textContent='Décodage en cours…');
-        try{
-          const code = await decodeFileToBarcode(fi.files[0]);
-          if (code) {
-            target.value = code;
-            status && (status.textContent='✅ Code détecté : '+code);
-          } else {
-            status && (status.textContent='❌ Code non détecté. Essayez une autre photo (netteté, cadrage, lumière).');
-            alert('Code non détecté. Choisissez une photo nette, bien cadrée et éclairée.');
-          }
-        }catch(e){
-          status && (status.textContent='❌ Erreur décodage');
-          alert('Erreur pendant le décodage: '+String(e.message||e));
-        }
-      });
-    }
-    wire('#btnCartonsBC', '#cartons_bc_file', '#cartons_code', '#cartons_bc_status');
-    wire('#btnPaBC', '#pa_bc_file', '#pa_code', '#pa_bc_status');
-    wire('#btnPdBC', '#pd_bc_file', '#pd_code', '#pd_bc_status');
-  })();
-
-  // Soumission + KPI
-  initForms(); 
-  qs('#btnKpi')?.addEventListener('click', loadAndRenderKpi);
-  qs('#btnExport')?.addEventListener('click', doExportXlsx);
 });
