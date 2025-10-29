@@ -1,4 +1,4 @@
-/* ========== CONFIG (unique) ========== */
+/* ========= CONFIG ========= */
 (function(){
   if(!window.CONFIG){
     window.CONFIG = {
@@ -11,11 +11,25 @@
     };
   }
 })();
+
+/* ========= Helpers ========= */
 const qs  = (s, el=document)=> el.querySelector(s);
 const qsa = (s, el=document)=> Array.from(el.querySelectorAll(s));
 function todayStr(){ const d=new Date(); const p=n=>n<10?'0'+n:n; return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; }
 
-/* ========== Loader ========== */
+function on(el, ev, selOrFn, maybeFn){
+  // delegation-friendly
+  if(typeof selOrFn === 'function'){
+    el.addEventListener(ev, selOrFn);
+  } else {
+    el.addEventListener(ev, (e)=>{
+      const t = e.target.closest(selOrFn);
+      if(t) maybeFn(e, t);
+    });
+  }
+}
+
+/* ========= Loader ========= */
 let _loader=0;
 function showLoader(msg){
   let el=qs('#globalLoader');
@@ -33,7 +47,7 @@ function showLoader(msg){
 }
 function hideLoader(){ _loader=Math.max(0,_loader-1); const el=qs('#globalLoader'); if(el && !_loader) el.style.display='none'; }
 
-/* ========== Fetch util ========== */
+/* ========= Fetch ========= */
 function fetchWithTimeout(url, opts={}, ms=30000){
   return new Promise((res,rej)=>{
     const ctl=new AbortController(); const id=setTimeout(()=>{ctl.abort(); rej(new Error('Timeout'));}, ms);
@@ -41,7 +55,7 @@ function fetchWithTimeout(url, opts={}, ms=30000){
   });
 }
 
-/* ========== UI: tabs + thème + defaults ========== */
+/* ========= Theme & Tabs ========= */
 function setupTheme(){
   const t=localStorage.getItem('qc_theme')||'light';
   document.documentElement.setAttribute('data-theme',t);
@@ -53,34 +67,41 @@ function setupTheme(){
     localStorage.setItem('qc_theme',nxt);
   });
 }
+
 function setupTabs(){
-  const tabs=qsa('.tabs .tab'); const sections=qsa('.tabContent');
-  tabs.forEach(b=>b.addEventListener('click', ()=>{
-    tabs.forEach(x=>x.classList.remove('active')); b.classList.add('active');
-    const t=b.dataset.target;
-    sections.forEach(s=> s.classList.toggle('active', s.id===t));
-    if(t==='tabKPI') loadAndRenderKPI().catch(()=>{});
-  }));
+  const tabsEl = qs('#tabs');
+  on(tabsEl, 'click', '.tab', (e, btn)=>{
+    const target = btn.getAttribute('data-target');
+    // toggle boutons
+    qsa('.tabs .tab').forEach(b=> b.classList.toggle('active', b===btn));
+    // toggle sections
+    qsa('.tabContent').forEach(s=> s.classList.toggle('active', s.id === target));
+    if(target==='tabKPI') loadAndRenderKPI().catch(()=>{});
+  });
 }
+
+/* ========= Defaults + KO UI ========= */
 function setDefaults(){
   qsa('input[type="date"]').forEach(i=>{ if(!i.value) i.value=todayStr(); });
   qsa('form.qcForm select').forEach(s=>{ if(!s.value) s.value='OK'; });
 }
+
 function setupKO(){
-  qsa('.qblock').forEach(block=>{
-    const sel=qs('select',block), details=qs('.koDetails',block);
-    if(!sel || !details) return;
-    const sync=()=>{
-      const isKO=(sel.value||'').toUpperCase()==='KO';
-      details.classList.toggle('hidden',!isKO);
-      qsa('input[type="file"]',details).forEach(f=> f.required=isKO);
-      const ta=qs('textarea',details); if(ta) ta.required=isKO;
-    };
-    sel.addEventListener('change',sync); sync();
+  // délégation : toute sélection qui change dans un .qblock
+  on(document, 'change', '.qblock select', (e, sel)=>{
+    const block = sel.closest('.qblock');
+    const details = qs('.koDetails', block);
+    if(!details) return;
+    const isKO = (sel.value || '').toUpperCase() === 'KO';
+    details.classList.toggle('hidden', !isKO);
+    qsa('input[type="file"]', details).forEach(f=> f.required = isKO);
+    const ta = qs('textarea', details); if(ta) ta.required = isKO;
   });
+  // init
+  qsa('.qblock select').forEach(sel=> sel.dispatchEvent(new Event('change')));
 }
 
-/* ========== Images ≤ 600Ko ========== */
+/* ========= Images ≤ 600 Ko ========= */
 function fileToDataURL(file){ return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(file); }); }
 function imageFromFile(file){ return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>{ const img=new Image(); img.onload=()=>ok(img); img.onerror=ko; img.src=fr.result; }; fr.onerror=ko; fr.readAsDataURL(file); }); }
 function guessExt(file){ const t=(file&&file.type)||''; if(t.includes('png')) return 'png'; if(t.includes('webp')) return 'webp'; if(t.includes('heic')||t.includes('heif')) return 'heic'; return 'jpg'; }
@@ -99,7 +120,44 @@ async function resizeToLimit(file){
 }
 async function filesToDataURLsLimited(list){ const out=[]; for(const f of Array.from(list||[])) out.push(await resizeToLimit(f)); return out; }
 
-/* ========== Build payload ========== */
+/* ========= Décodage code-barres depuis image (upload) ========= */
+async function decodeBarcodeFromFile(inputEl, targetInputId){
+  const file = inputEl.files && inputEl.files[0];
+  if(!file){ return; }
+  try{
+    // Lire l'image brute, pas de compression avant décodage
+    const dataURL = await fileToDataURL(file);
+    const img = new Image();
+    const done = new Promise((ok,ko)=>{ img.onload=ok; img.onerror=ko; });
+    img.src = dataURL; await done;
+
+    // ZXing: BrowserMultiFormatReader().decodeFromImageElement
+    let reader = null;
+    if(window.ZXingBrowser && ZXingBrowser.BrowserMultiFormatReader) reader = new ZXingBrowser.BrowserMultiFormatReader();
+    else if(window.ZXing && ZXing.BrowserMultiFormatReader) reader = new ZXing.BrowserMultiFormatReader();
+    if(!reader){ alert("ZXing non chargé"); return; }
+
+    const NS=(window.ZXingBrowser||window.ZXing);
+    if(reader.setHints){
+      const hints=new Map(); hints.set(NS.DecodeHintType.POSSIBLE_FORMATS,[NS.BarcodeFormat.EAN_13,NS.BarcodeFormat.CODE_128,NS.BarcodeFormat.CODE_39]);
+      reader.setHints(hints);
+    }
+    const res = await reader.decodeFromImage(img);
+    const text = (res && (res.text || (res.getText&&res.getText())))?.trim();
+    if(text){
+      const target = document.getElementById(targetInputId);
+      if(target) target.value = text;
+    } else {
+      alert("Aucun code-barres détecté sur l’image.");
+    }
+  }catch(e){
+    alert("Échec du décodage depuis l’image : "+(e&&e.message||e));
+  }finally{
+    // ne vide pas automatiquement le file input (pour pouvoir retenter)
+  }
+}
+
+/* ========= Build payload ========= */
 async function buildPayload(form){
   const date=qs('input[name="date_saisie"]',form).value.trim();
   const code=qs('input[name="code_barres"]',form).value.trim();
@@ -123,12 +181,11 @@ async function buildPayload(form){
   return { date_jour:date, code_barres:code, photo_principale, answers };
 }
 
-/* ========== Submit ========== */
+/* ========= Submit ========= */
 async function postQC(form){
   const base=CONFIG.WEBAPP_BASE_URL;
   if(!base){ alert('URL backend non configurée'); throw new Error('No backend'); }
   const type=form.dataset.type;
-
   const url=new URL(base); url.searchParams.set('route','qc'); url.searchParams.set('type',type);
   const payload=await buildPayload(form);
 
@@ -144,7 +201,7 @@ async function postQC(form){
     if(!js.ok){ alert('Erreur backend : '+(js.error||'inconnue')); return; }
 
     alert('✔ Enregistré ('+(js.sheet||type)+')');
-    // Rester sur le même onglet (demande) — reset léger :
+    // Rester sur le même onglet — reset léger :
     qsa('select',form).forEach(s=> s.value='OK');
     qsa('.koDetails',form).forEach(d=>{
       d.classList.add('hidden');
@@ -159,31 +216,8 @@ async function postQC(form){
     hideLoader(); btn && (btn.disabled=false);
   }
 }
-function setupForms(){
-  qsa('form.qcForm').forEach(f=>{
-    f.addEventListener('submit', async e=>{
-      e.preventDefault();
-      if(!qs('input[name="date_saisie"]',f).value || !qs('input[name="code_barres"]',f).value){
-        alert('Date et code-barres sont obligatoires.'); return;
-      }
-      // Double-check KO
-      let ok=true;
-      qsa('.qblock',f).forEach(b=>{
-        const sel=qs('select',b), isKO=(sel.value||'').toUpperCase()==='KO';
-        if(isKO){
-          const d=qs('.koDetails',b);
-          const hasFile=qsa('input[type="file"]',d).some(i=>i.files&&i.files.length);
-          const hasComment=(qs('textarea',d)?.value||'').trim().length>0;
-          if(!hasFile || !hasComment) ok=false;
-        }
-      });
-      if(!ok){ alert('Pour chaque KO : photo(s) et commentaire obligatoires.'); return; }
-      await postQC(f);
-    });
-  });
-}
 
-/* ========== KPI ========== */
+/* ========= KPI ========= */
 let CHARTS=[];
 async function loadAndRenderKPI(){
   const base=CONFIG.WEBAPP_BASE_URL; if(!base){ qs('#kpiResults').textContent='Backend non configuré'; return; }
@@ -242,7 +276,7 @@ function renderKPI(kpi){
   if(total===0){ const p=document.createElement('p'); p.textContent='Aucune donnée.'; wrap.appendChild(p); }
 }
 
-/* ========== Scanner iPhone/Android ========== */
+/* ========= Scanner live iPhone/Android ========= */
 let _scanner = { stream:null, reader:null, targetInputId:null, running:false };
 function openScannerFor(id){ _scanner.targetInputId=id; qs('#scannerModal').style.display='grid'; }
 function closeScanner(){ stopScanner(); qs('#scannerModal').style.display='none'; }
@@ -257,7 +291,6 @@ async function startScanner(){
     const stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});
     _scanner.stream=stream; video.srcObject=stream; await video.play();
 
-    // Hints formats
     const NS=(window.ZXingBrowser||window.ZXing);
     if(_scanner.reader.setHints){
       const hints=new Map(); hints.set(NS.DecodeHintType.POSSIBLE_FORMATS,[NS.BarcodeFormat.EAN_13,NS.BarcodeFormat.CODE_128,NS.BarcodeFormat.CODE_39]);
@@ -286,17 +319,45 @@ function stopScanner(){
   if(_scanner.stream){ _scanner.stream.getTracks().forEach(t=>{ try{t.stop()}catch(_){}}); _scanner.stream=null; }
 }
 
-/* ========== Init ========== */
+/* ========= Init ========= */
 document.addEventListener('DOMContentLoaded', ()=>{
-  setupTheme(); setupTabs(); setDefaults(); setupKO(); setupForms();
+  setupTheme();
+  setupTabs();
+  setDefaults();
+  setupKO();
 
-  // Scanner bindings
-  qsa('button[data-scan]').forEach(b=> b.addEventListener('click', ()=> openScannerFor(b.getAttribute('data-scan')) ));
+  // Délégation formulaires
+  on(document, 'submit', 'form.qcForm', async (e, form)=>{ e.preventDefault();
+    if(!qs('input[name="date_saisie"]',form).value || !qs('input[name="code_barres"]',form).value){
+      alert('Date et code-barres sont obligatoires.'); return;
+    }
+    // Double-check KO
+    let ok=true;
+    qsa('.qblock',form).forEach(b=>{
+      const sel=qs('select',b), isKO=(sel.value||'').toUpperCase()==='KO';
+      if(isKO){
+        const d=qs('.koDetails',b);
+        const hasFile=qsa('input[type="file"]',d).some(i=>i.files&&i.files.length);
+        const hasComment=(qs('textarea',d)?.value||'').trim().length>0;
+        if(!hasFile || !hasComment) ok=false;
+      }
+    });
+    if(!ok){ alert('Pour chaque KO : photo(s) et commentaire obligatoires.'); return; }
+    await postQC(form);
+  });
+
+  // Délégation boutons “Scanner”
+  on(document, 'click', 'button[data-scan]', (e, btn)=>{ openScannerFor(btn.getAttribute('data-scan')); });
+
+  // Modal controls
   const bS=qs('#scannerStart'), bP=qs('#scannerStop'), bC=qs('#scannerClose');
   if(bS) bS.addEventListener('click', startScanner);
-  if(bP)  bP.addEventListener('click', stopScanner);
-  if(bC)  bC.addEventListener('click', closeScanner);
+  if(bP) bP.addEventListener('click', stopScanner);
+  if(bC) bC.addEventListener('click', closeScanner);
 
-  // KPI refresh button
+  // Décodage depuis image (upload)
+  on(document, 'change', 'input.barcode-photo', async (e, input)=>{ await decodeBarcodeFromFile(input, input.getAttribute('data-target')); });
+
+  // KPI refresh
   const btnK=qs('#btnKpiRefresh'); if(btnK) btnK.addEventListener('click', ()=> loadAndRenderKPI().catch(()=>{}) );
 });
