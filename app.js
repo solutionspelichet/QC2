@@ -6,6 +6,40 @@ var CONFIG = {
   QUALITY: 0.85
 };
 
+async function imageFromFileRaw_(file){
+  let blob = file;
+
+  // iPhone: si HEIC/HEIF, on convertit vers JPEG
+  const isHeic = /image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name || "");
+  if (isHeic && window.heic2any) {
+    try {
+      blob = await heic2any({
+        blob: file,
+        toType: "image/jpeg",
+        quality: 0.92
+      });
+    } catch (e) {
+      console.warn("Conversion HEIC->JPEG échouée, on tente quand même:", e);
+    }
+  }
+
+  // Charge en <img> à partir d’un Blob/URL
+  const dataURL = await new Promise((ok, ko) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(fr.result);
+    fr.onerror = ko;
+    fr.readAsDataURL(blob);
+  });
+
+  return await new Promise((ok, ko) => {
+    const img = new Image();
+    img.onload = () => ok(img);
+    img.onerror = ko;
+    img.src = dataURL;
+  });
+}
+
+
 /* ====== Helpers DOM/Date/Events ====== */
 const qs  = (s, el=document)=> el.querySelector(s);
 const qsa = (s, el=document)=> Array.from(el.querySelectorAll(s));
@@ -243,9 +277,10 @@ async function decodeBarcodeFromFile(inputEl, targetId){
     const reader = getZXReader();
     setZXHints_(reader);
 
+    // img est maintenant un JPEG “safe” si la source était HEIC
     const img = await imageFromFileRaw_(file);
 
-    // Essais multi-rotations et multi-échelles (aide beaucoup iPhone/HEIC/contraintes focus)
+    // Essais multi-rotations + multi-échelles (aide Safari/iOS)
     const rotations = [0, 90, 180, 270];
     const scales    = [1.0, 0.85, 0.7, 0.55, 0.42];
 
@@ -257,12 +292,12 @@ async function decodeBarcodeFromFile(inputEl, targetId){
         if(reader && reader.decodeFromCanvas){
           try{
             const res = await reader.decodeFromCanvas(canvas);
-            const txt = (res && (res.text || (res.getText&&res.getText())))?.trim();
+            const txt = (res && (res.text || (res.getText && res.getText())))?.trim();
             if(txt){ const t=document.getElementById(targetId); if(t) t.value=txt; return; }
           }catch(_){}
         }
 
-        // b) Via JPEG → <img> (compat anciennes versions)
+        // b) Via JPEG -> <img> (compat)
         try{
           const url = canvas.toDataURL('image/jpeg', 0.92);
           const tmp = await imageFromDataURL_(url);
@@ -276,6 +311,13 @@ async function decodeBarcodeFromFile(inputEl, targetId){
         }catch(_){}
       }
     }
+
+    alert("Aucun code-barres détecté sur la photo. Astuce: recadre le code, bonne lumière, éviter le flou.");
+  }catch(e){
+    alert("Échec décodage image : " + (e && e.message ? e.message : e));
+  }
+}
+
 
     alert("Aucun code-barres détecté sur l'image. Éclaire bien, recadre et évite le flou.");
   }catch(e){
