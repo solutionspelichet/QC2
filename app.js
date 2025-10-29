@@ -1,44 +1,10 @@
-/* ====== CONFIG (var pour éviter double déclaration) ====== */
+/* ====== CONFIG (var pour éviter double-déclaration) ====== */
 var CONFIG = {
   WEBAPP_BASE_URL: "https://script.google.com/macros/s/AKfycbyy826nPPtVW-HpyUSqzhJ-Eoq42_-rXhYHW3WXi3rT9cZ61dW264c7DDnfagnrXjM7/exec",
   MAX_IMAGE_DIM: 1600,
   MAX_FILE_SIZE_KB: 600,
   QUALITY: 0.85
 };
-
-async function imageFromFileRaw_(file){
-  let blob = file;
-
-  // iPhone: si HEIC/HEIF, on convertit vers JPEG
-  const isHeic = /image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name || "");
-  if (isHeic && window.heic2any) {
-    try {
-      blob = await heic2any({
-        blob: file,
-        toType: "image/jpeg",
-        quality: 0.92
-      });
-    } catch (e) {
-      console.warn("Conversion HEIC->JPEG échouée, on tente quand même:", e);
-    }
-  }
-
-  // Charge en <img> à partir d’un Blob/URL
-  const dataURL = await new Promise((ok, ko) => {
-    const fr = new FileReader();
-    fr.onload = () => ok(fr.result);
-    fr.onerror = ko;
-    fr.readAsDataURL(blob);
-  });
-
-  return await new Promise((ok, ko) => {
-    const img = new Image();
-    img.onload = () => ok(img);
-    img.onerror = ko;
-    img.src = dataURL;
-  });
-}
-
 
 /* ====== Helpers DOM/Date/Events ====== */
 const qs  = (s, el=document)=> el.querySelector(s);
@@ -48,25 +14,30 @@ function on(el, ev, selOrFn, maybeFn){
   if(typeof selOrFn==='function'){ el.addEventListener(ev, selOrFn); }
   else{ el.addEventListener(ev, (e)=>{ const t=e.target.closest(selOrFn); if(t) maybeFn(e,t); }); }
 }
-const sleep = (ms)=> new Promise(r=>setTimeout(r,ms));
 const isIOS = ()=> /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints>1);
 
 /* ====== Theme ====== */
 (function(){ const t=localStorage.getItem('qc_theme')||'light'; document.documentElement.setAttribute('data-theme', t); })();
-qs('#themeToggle').addEventListener('click', ()=>{
-  const cur=document.documentElement.getAttribute('data-theme');
-  const nxt=cur==='dark'?'light':'dark';
-  document.documentElement.setAttribute('data-theme',nxt);
-  localStorage.setItem('qc_theme',nxt);
-});
+const themeToggleEl = qs('#themeToggle');
+if (themeToggleEl){
+  themeToggleEl.addEventListener('click', ()=>{
+    const cur=document.documentElement.getAttribute('data-theme');
+    const nxt=cur==='dark'?'light':'dark';
+    document.documentElement.setAttribute('data-theme',nxt);
+    localStorage.setItem('qc_theme',nxt);
+  });
+}
 
 /* ====== Tabs ====== */
-on(qs('#tabs'), 'click', '.tab', (e,btn)=>{
-  const target=btn.getAttribute('data-target');
-  qsa('.tabs .tab').forEach(b=> b.classList.toggle('active', b===btn));
-  qsa('.tabContent').forEach(s=> s.classList.toggle('active', s.id===target));
-  if(target==='tabKPI'){ loadAndRenderKPI().catch(()=>{}); }
-});
+const tabsEl = qs('#tabs');
+if (tabsEl){
+  on(tabsEl, 'click', '.tab', (e,btn)=>{
+    const target=btn.getAttribute('data-target');
+    qsa('.tabs .tab').forEach(b=> b.classList.toggle('active', b===btn));
+    qsa('.tabContent').forEach(s=> s.classList.toggle('active', s.id===target));
+    if(target==='tabKPI'){ loadAndRenderKPI().catch(()=>{}); }
+  });
+}
 
 /* ====== Defaults ====== */
 qsa('input[type="date"]').forEach(i=>{ if(!i.value) i.value=todayStr(); });
@@ -84,14 +55,14 @@ on(document, 'change', '.qblock select', (e, sel)=>{
 
 /* ====== Loader ====== */
 let _loader=0;
-function showLoader(msg){ qs('#loaderMsg').textContent=msg||'Chargement...'; qs('#globalLoader').style.display='flex'; _loader++; }
-function hideLoader(){ _loader=Math.max(0,_loader-1); if(!_loader) qs('#globalLoader').style.display='none'; }
+function showLoader(msg){ qs('#loaderMsg') && (qs('#loaderMsg').textContent=msg||'Chargement...'); qs('#globalLoader') && (qs('#globalLoader').style.display='flex'); _loader++; }
+function hideLoader(){ _loader=Math.max(0,_loader-1); if(!_loader && qs('#globalLoader')) qs('#globalLoader').style.display='none'; }
 
 /* ===================================================================== */
 /* =========================== SCANNER REWORK ========================== */
 /* ===================================================================== */
 
-/* ---- Choix techno ---- */
+/* ---- Tech choice ---- */
 const hasBarcodeDetector = typeof window.BarcodeDetector === 'function';
 let ZX_READER = null;
 function getZXReader(){
@@ -124,16 +95,17 @@ async function getBarcodeDetector(){
   return BD;
 }
 
-/* ---- Etat scanner ---- */
+/* ---- Scanner state ---- */
 let SCAN = { stream:null, target:null, running:false, raf:0, usingBD:false };
 
-/* ---- Ouvre la modale ---- */
+/* ---- Open modal ---- */
 function openScannerFor(id){
   SCAN.target = id;
-  qs('#scannerModal').style.display = 'grid';
+  const modal = qs('#scannerModal');
+  if (modal) modal.style.display = 'grid';
 }
 
-/* ---- Boucle BarcodeDetector ---- */
+/* ---- BarcodeDetector loop ---- */
 async function loopBarcodeDetector_(video){
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d', {alpha:false, desynchronized:true});
@@ -166,7 +138,7 @@ async function loopBarcodeDetector_(video){
   return true;
 }
 
-/* ---- Boucle ZXing (frame by frame) ---- */
+/* ---- ZXing loop (frame-by-frame) ---- */
 async function loopZXing_(video){
   const reader = getZXReader(); if(!reader) return false;
   setZXHints_(reader);
@@ -182,17 +154,19 @@ async function loopZXing_(video){
       canvas.width = w; canvas.height = h;
       ctx.drawImage(video, 0, 0, w, h);
 
-      // Essais: direct canvas → puis jpeg → image (certaines versions ZXing)
       try{
-        const res = await reader.decodeFromCanvas(canvas);
-        const txt = (res && (res.text || (res.getText&&res.getText())))?.trim();
-        if(txt){
-          const inp = document.getElementById(SCAN.target);
-          if(inp) inp.value = txt;
-          closeScanner();
-          return;
+        if (reader.decodeFromCanvas){
+          const res = await reader.decodeFromCanvas(canvas);
+          const txt = (res && (res.text || (res.getText&&res.getText())))?.trim();
+          if(txt){
+            const inp = document.getElementById(SCAN.target);
+            if(inp) inp.value = txt;
+            closeScanner();
+            return;
+          }
         }
       }catch(_){}
+
       try{
         const url = canvas.toDataURL('image/jpeg', 0.9);
         const img = await imageFromDataURL_(url);
@@ -213,54 +187,47 @@ async function loopZXing_(video){
   return true;
 }
 
-/* ---- Démarre le scanner ---- */
+/* ---- Start/Stop/Close ---- */
 async function startScanner(){
   try{
     const v = qs('#scannerVideo');
+    if (!v) throw new Error('Video manquante');
     v.setAttribute('playsinline','true'); v.muted = true;
 
-    // iOS : si l’utilisateur est dans une PWA non https, parfois l’accès caméra est bloqué.
-    // On tente normalement, sinon on proposera l’upload (cf. fallback plus bas).
     const st = await navigator.mediaDevices.getUserMedia({
       audio:false,
       video:{ facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720} }
     });
     SCAN.stream = st; v.srcObject = st; await v.play(); SCAN.running = true;
 
-    // 1) Try BarcodeDetector, sinon 2) ZXing
     const okBD = await loopBarcodeDetector_(v);
     if(!okBD){
       const okZX = await loopZXing_(v);
       if(!okZX) throw new Error('Aucune techno de scan disponible');
     }
   }catch(e){
-    // Fallback: sur iOS si caméra refusée → on déclenche l’upload photo adjacent
     alert("Caméra non accessible. Utilise l'upload de photo pour décoder.");
     stopScanner();
-    // Essaie d’ouvrir directement le sélecteur de fichier du champ voisin
     try{
       if(SCAN.target){
-        // On cherche un input.barcode-photo qui cible ce champ
         const inputFile = qsa('input.barcode-photo').find(i => i.getAttribute('data-target') === SCAN.target);
         if(inputFile){ inputFile.click(); }
       }
     }catch(_){}
   }
 }
-
-/* ---- Stop/Close ---- */
 function stopScanner(){
   SCAN.running = false;
   if(SCAN.raf) cancelAnimationFrame(SCAN.raf);
   if(SCAN.stream){ SCAN.stream.getTracks().forEach(t=>{try{t.stop()}catch(_){}}); SCAN.stream=null; }
 }
-function closeScanner(){ stopScanner(); qs('#scannerModal').style.display='none'; }
+function closeScanner(){ stopScanner(); const m=qs('#scannerModal'); if(m) m.style.display='none'; }
 
-qs('#scannerStart').addEventListener('click', startScanner);
-qs('#scannerStop').addEventListener('click', stopScanner);
-qs('#scannerClose').addEventListener('click', closeScanner);
+const btnStart = qs('#scannerStart'), btnStop = qs('#scannerStop'), btnClose = qs('#scannerClose');
+btnStart && btnStart.addEventListener('click', startScanner);
+btnStop  && btnStop.addEventListener('click', stopScanner);
+btnClose && btnClose.addEventListener('click', closeScanner);
 
-/* ---- Boutons "Scanner" dans les formulaires ---- */
 on(document, 'click', 'button[data-scan]', (e,btn)=>{ openScannerFor(btn.getAttribute('data-scan')); });
 
 /* ---- Upload → décodage ---- */
@@ -268,7 +235,7 @@ on(document,'change','input.barcode-photo', async (e,input)=>{
   await decodeBarcodeFromFile(input, input.getAttribute('data-target'));
 });
 
-/* ---- Décodage robuste d'une photo ---- */
+/* ---- Décodage robuste d'une photo (HEIC iPhone → JPEG) ---- */
 async function decodeBarcodeFromFile(inputEl, targetId){
   const file = inputEl.files && inputEl.files[0];
   if(!file) return;
@@ -277,10 +244,10 @@ async function decodeBarcodeFromFile(inputEl, targetId){
     const reader = getZXReader();
     setZXHints_(reader);
 
-    // img est maintenant un JPEG “safe” si la source était HEIC
+    // img devient JPEG “safe” si la source était HEIC/HEIF
     const img = await imageFromFileRaw_(file);
 
-    // Essais multi-rotations + multi-échelles (aide Safari/iOS)
+    // Multi-rotations + multi-échelles
     const rotations = [0, 90, 180, 270];
     const scales    = [1.0, 0.85, 0.7, 0.55, 0.42];
 
@@ -288,16 +255,14 @@ async function decodeBarcodeFromFile(inputEl, targetId){
       for(const sc of scales){
         const canvas = canvasFromImageNormalize_(img, sc, 1600, true, rot);
 
-        // a) Direct canvas
         if(reader && reader.decodeFromCanvas){
           try{
             const res = await reader.decodeFromCanvas(canvas);
-            const txt = (res && (res.text || (res.getText && res.getText())))?.trim();
+            const txt = (res && (res.text || (res.getText&&res.getText())))?.trim();
             if(txt){ const t=document.getElementById(targetId); if(t) t.value=txt; return; }
           }catch(_){}
         }
 
-        // b) Via JPEG -> <img> (compat)
         try{
           const url = canvas.toDataURL('image/jpeg', 0.92);
           const tmp = await imageFromDataURL_(url);
@@ -311,26 +276,38 @@ async function decodeBarcodeFromFile(inputEl, targetId){
         }catch(_){}
       }
     }
-
-    alert("Aucun code-barres détecté sur la photo. Astuce: recadre le code, bonne lumière, éviter le flou.");
-  }catch(e){
-    alert("Échec décodage image : " + (e && e.message ? e.message : e));
-  }
-}
-
-
-    alert("Aucun code-barres détecté sur l'image. Éclaire bien, recadre et évite le flou.");
+    alert("Aucun code-barres détecté sur la photo. Éclaire bien, recadre et évite le flou.");
   }catch(e){
     alert("Échec décodage image : " + (e && e.message ? e.message : e));
   }
 }
 
 /* ---- Helpers images ---- */
-function imageFromFileRaw_(file){
-  return new Promise((ok,ko)=>{
-    const fr=new FileReader();
-    fr.onload=()=>{ const img=new Image(); img.onload=()=>ok(img); img.onerror=ko; img.src=fr.result; };
-    fr.onerror=ko; fr.readAsDataURL(file);
+async function imageFromFileRaw_(file){
+  let blob = file;
+
+  // iPhone : HEIC/HEIF → JPEG
+  const isHeic = /image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name || "");
+  if (isHeic && window.heic2any){
+    try{
+      blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.92 });
+    }catch(e){
+      console.warn("Conversion HEIC->JPEG échouée, on tente quand même:", e);
+    }
+  }
+
+  const dataURL = await new Promise((ok, ko) => {
+    const fr = new FileReader();
+    fr.onload = () => ok(fr.result);
+    fr.onerror = ko;
+    fr.readAsDataURL(blob);
+  });
+
+  return await new Promise((ok, ko) => {
+    const img = new Image();
+    img.onload = () => ok(img);
+    img.onerror = ko;
+    img.src = dataURL;
   });
 }
 function imageFromDataURL_(dataURL){
@@ -501,19 +478,19 @@ on(document,'submit','form.qcForm', async (e, form)=>{
 /* ====== KPI ====== */
 let CHARTS=[];
 async function loadAndRenderKPI(){
-  const base=CONFIG.WEBAPP_BASE_URL; const box=qs('#kpiResults'); if(!base){ box.textContent='Backend non configuré'; return; }
+  const base=CONFIG.WEBAPP_BASE_URL; const box=qs('#kpiResults'); if(!base){ if(box) box.textContent='Backend non configuré'; return; }
   const url=new URL(base); url.searchParams.set('route','kpi');
-  box.textContent='Chargement KPI…'; showLoader('Chargement KPI…');
+  if(box) box.textContent='Chargement KPI…'; showLoader('Chargement KPI…');
   try{
     const js=await fetch(url.toString()).then(r=>r.json());
-    if(!js.ok){ box.textContent='Erreur KPI : '+(js.error||'inconnue'); return; }
+    if(!js.ok){ if(box) box.textContent='Erreur KPI : '+(js.error||'inconnue'); return; }
     renderKPI(js.kpi);
-  }catch{ box.textContent='Erreur KPI réseau.'; }
+  }catch{ if(box) box.textContent='Erreur KPI réseau.'; }
   finally{ hideLoader(); }
 }
 function renderKPI(kpi){
   CHARTS.forEach(c=>{try{c.destroy()}catch{}}); CHARTS=[];
-  const wrap=qs('#kpiResults'); wrap.innerHTML='';
+  const wrap=qs('#kpiResults'); if(!wrap) return; wrap.innerHTML='';
   const TYPES=['Cartons','Palettes_Avant','Palettes_Destination'];
   const empty=()=>({summary:{total_entries:0,entries_with_any_KO:0,entries_with_any_KO_pct:0,total_KO_items:0,avg_KO_per_entry:0},per_question:{},by_date:[]});
 
@@ -550,4 +527,5 @@ function renderKPI(kpi){
     }
   });
 }
-qs('#btnKpiRefresh')?.addEventListener('click', ()=> loadAndRenderKPI().catch(()=>{}) );
+const btnKpi = qs('#btnKpiRefresh');
+btnKpi && btnKpi.addEventListener('click', ()=> loadAndRenderKPI().catch(()=>{}) );
