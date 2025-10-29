@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#ff6a00" />
 <style>
 :root{--bg:#0f1115;--card:#141821;--text:#f2f2f2;--muted:#b6bcc7;--border:#242a36;--primary:#ff6a00;--primaryText:#000}
-:root[data-theme="light"]{--bg:#fff;--card:#f7f7f9;--text:#101318;--muted:#4c5563;--border:#e2e6ee;--primary:#ff6a00;--primaryText:#000}
+:root[data-theme="light"]{--bg:#ffffff;--card:#f7f7f9;--text:#101318;--muted:#4c5563;--border:#e2e6ee;--primary:#ff6a00;--primaryText:#000}
 *{box-sizing:border-box}html,body{height:100%}body{margin:0;background:var(--bg);color:var(--text);font:500 16px/1.45 "Trebuchet MS",system-ui,Segoe UI,Roboto,Arial,sans-serif}
 .topbar{display:flex;align-items:center;gap:.7rem;padding:.6rem 1rem;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:10}
 .logo{width:36px;height:36px;border-radius:8px;background:#ff6a00}
@@ -44,15 +44,18 @@ textarea{min-height:84px}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 
-<!-- Librairies nécessaires -->
+<!-- Librairies -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <script src="https://unpkg.com/@zxing/library@latest"></script>
+
+<!-- Evite l'erreur 404 favicon (facultatif) -->
+<link rel="icon" href="data:;base64,iVBORw0KGgo=">
 </head>
 <body>
   <header class="topbar">
     <div class="logo" aria-hidden="true"></div>
     <h1>Pelichet QC (Diag)</h1>
-    <button id="themeToggle" class="icon-btn" title="Clair/Sombre">☀️/🌙</button>
+    <button id="themeToggle" class="icon-btn" title="Clair/Sombre">Light/Dark</button>
   </header>
 
   <nav class="tabs" id="tabs">
@@ -65,7 +68,7 @@ textarea{min-height:84px}
   <main class="container">
     <!-- CARTONS -->
     <section id="tabCartons" class="tabContent active">
-      <h2>Contrôle des Cartons</h2>
+      <h2>Controle des Cartons</h2>
       <form id="formCartons" class="qcForm" data-type="Cartons" autocomplete="off">
         <div class="row">
           <label>Date</label>
@@ -94,48 +97,48 @@ textarea{min-height:84px}
             <select name="callage_papier"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
             <div class="koDetails hidden">
               <input type="file" name="callage_papier_photos" accept="image/*" multiple />
-              <textarea name="callage_papier_commentaire" placeholder="Décrire le problème"></textarea>
+              <textarea name="callage_papier_commentaire" placeholder="Decrire le probleme"></textarea>
             </div>
           </div>
 
           <div class="qblock">
-            <label>Intercalaires présents ?</label>
+            <label>Intercalaires presents ?</label>
             <select name="intercalaires_livres"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
             <div class="koDetails hidden">
               <input type="file" name="intercalaires_livres_photos" accept="image/*" multiple />
-              <textarea name="intercalaires_livres_commentaire" placeholder="Décrire le problème"></textarea>
+              <textarea name="intercalaires_livres_commentaire" placeholder="Decrire le probleme"></textarea>
             </div>
           </div>
 
           <div class="qblock">
-            <label>Ordre & disposition respectés ?</label>
+            <label>Ordre & disposition respectes ?</label>
             <select name="ordre_colonnes"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
             <div class="koDetails hidden">
               <input type="file" name="ordre_colonnes_photos" accept="image/*" multiple />
-              <textarea name="ordre_colonnes_commentaire" placeholder="Décrire le problème"></textarea>
+              <textarea name="ordre_colonnes_commentaire" placeholder="Decrire le probleme"></textarea>
             </div>
           </div>
 
           <div class="qblock">
-            <label>Scotch bien appliqué ?</label>
+            <label>Scotch bien applique ?</label>
             <select name="scotch"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
             <div class="koDetails hidden">
               <input type="file" name="scotch_photos" accept="image/*" multiple />
-              <textarea name="scotch_commentaire" placeholder="Décrire le problème"></textarea>
+              <textarea name="scotch_commentaire" placeholder="Decrire le probleme"></textarea>
             </div>
           </div>
 
           <div class="qblock">
-            <label>Livres dépoussiérés ?</label>
+            <label>Livres depoussieres ?</label>
             <select name="depoussierage"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
             <div class="koDetails hidden">
               <input type="file" name="depoussierage_photos" accept="image/*" multiple />
-              <textarea name="depoussierage_commentaire" placeholder="Décrire le problème"></textarea>
+              <textarea name="depoussierage_commentaire" placeholder="Decrire le probleme"></textarea>
             </div>
           </div>
         </fieldset>
 
-        <button type="submit" class="btn primary">📤 Envoyer</button>
+        <button type="submit" class="btn primary">Envoyer (diag)</button>
       </form>
     </section>
 
@@ -155,13 +158,13 @@ textarea{min-height:84px}
         </div>
         <div class="row"><label>Photo principale</label><input type="file" name="photo_principale" accept="image/*" capture="environment" /></div>
         <fieldset><legend>Questions</legend>
-          <div class="qblock"><label>Cartons en bon état ?</label><select name="cartons_etat"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="cartons_etat_photos" accept="image/*" multiple /><textarea name="cartons_etat_commentaire"></textarea></div></div>
-          <div class="qblock"><label>Intercalaires présents ?</label><select name="intercalaires_cartons"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="intercalaires_cartons_photos" accept="image/*" multiple /><textarea name="intercalaires_cartons_commentaire"></textarea></div></div>
-          <div class="qblock"><label>Ordre des cartons respecté ?</label><select name="ordre_cartons"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="ordre_cartons_photos" accept="image/*" multiple /><textarea name="ordre_cartons_commentaire"></textarea></div></div>
-          <div class="qblock"><label>Cerclage bien appliqué ?</label><select name="cerclage"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="cerclage_photos" accept="image/*" multiple /><textarea name="cerclage_commentaire"></textarea></div></div>
+          <div class="qblock"><label>Cartons en bon etat ?</label><select name="cartons_etat"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="cartons_etat_photos" accept="image/*" multiple /><textarea name="cartons_etat_commentaire"></textarea></div></div>
+          <div class="qblock"><label>Intercalaires presents ?</label><select name="intercalaires_cartons"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="intercalaires_cartons_photos" accept="image/*" multiple /><textarea name="intercalaires_cartons_commentaire"></textarea></div></div>
+          <div class="qblock"><label>Ordre des cartons respecte ?</label><select name="ordre_cartons"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="ordre_cartons_photos" accept="image/*" multiple /><textarea name="ordre_cartons_commentaire"></textarea></div></div>
+          <div class="qblock"><label>Cerclage bien applique ?</label><select name="cerclage"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="cerclage_photos" accept="image/*" multiple /><textarea name="cerclage_commentaire"></textarea></div></div>
           <div class="qblock"><label>Palette stable ?</label><select name="stabilite"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="stabilite_photos" accept="image/*" multiple /><textarea name="stabilite_commentaire"></textarea></div></div>
         </fieldset>
-        <button type="submit" class="btn primary">📤 Envoyer</button>
+        <button type="submit" class="btn primary">Envoyer (diag)</button>
       </form>
     </section>
 
@@ -181,18 +184,18 @@ textarea{min-height:84px}
         </div>
         <div class="row"><label>Photo principale</label><input type="file" name="photo_principale" accept="image/*" capture="environment" /></div>
         <fieldset><legend>Questions</legend>
-          <div class="qblock"><label>Cartons en bon état ?</label><select name="cartons_etat"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="cartons_etat_photos" accept="image/*" multiple /><textarea name="cartons_etat_commentaire"></textarea></div></div>
-          <div class="qblock"><label>Cerclage bien appliqué ?</label><select name="cerclage"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="cerclage_photos" accept="image/*" multiple /><textarea name="cerclage_commentaire"></textarea></div></div>
+          <div class="qblock"><label>Cartons en bon etat ?</label><select name="cartons_etat"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="cartons_etat_photos" accept="image/*" multiple /><textarea name="cartons_etat_commentaire"></textarea></div></div>
+          <div class="qblock"><label>Cerclage bien applique ?</label><select name="cerclage"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden"><input type="file" name="cerclage_photos" accept="image/*" multiple /><textarea name="cerclage_commentaire"></textarea></div></div>
         </fieldset>
-        <button type="submit" class="btn primary">📤 Envoyer</button>
+        <button type="submit" class="btn primary">Envoyer (diag)</button>
       </form>
     </section>
 
-    <!-- KPI (diag simple) -->
+    <!-- KPI -->
     <section id="tabKPI" class="tabContent">
       <h2>Tableau de bord KPI (diag)</h2>
       <div class="kpi-card">
-        <p>Si l’onglet s’affiche en cliquant, la bascule d’onglets fonctionne ✅</p>
+        <p>Si cet onglet s'affiche au clic, la bascule d'onglets fonctionne.</p>
       </div>
     </section>
   </main>
@@ -203,86 +206,148 @@ textarea{min-height:84px}
       <h3>Scanner le code-barres</h3>
       <video id="scannerVideo" playsinline autoplay muted></video>
       <div class="scanner-actions">
-        <button id="scannerStart" class="btn primary" type="button">Démarrer</button>
-        <button id="scannerStop" class="btn" type="button">Arrêter</button>
+        <button id="scannerStart" class="btn primary" type="button">Demarrer</button>
+        <button id="scannerStop" class="btn" type="button">Arreter</button>
         <button id="scannerClose" class="btn" type="button">Fermer</button>
       </div>
-      <p class="hint">Astuce : autorise la caméra dans Safari/Chrome, cadre à 15–25 cm.</p>
+      <p class="hint">Autoriser la camera dans Safari/Chrome. Cadrez a 15-25 cm.</p>
     </div>
   </div>
 
   <!-- Loader -->
-  <div id="globalLoader"><div class="box"><div class="spin"></div><div id="loaderMsg">Chargement…</div></div></div>
+  <div id="globalLoader"><div class="box"><div class="spin"></div><div id="loaderMsg">Chargement...</div></div></div>
 
 <script>
 /*** CONFIG ***/
-const CONFIG = {
+var CONFIG = {
   WEBAPP_BASE_URL: "https://script.google.com/macros/s/AKfycbyy826nPPtVW-HpyUSqzhJ-Eoq42_-rXhYHW3WXi3rT9cZ61dW264c7DDnfagnrXjM7/exec",
-  RESIZE_ENABLED:true, MAX_IMAGE_DIM:1600, OUTPUT_MIME:"image/jpeg", QUALITY:0.85, MAX_FILE_SIZE_KB:600
+  RESIZE_ENABLED: true,
+  MAX_IMAGE_DIM: 1600,
+  OUTPUT_MIME: "image/jpeg",
+  QUALITY: 0.85,
+  MAX_FILE_SIZE_KB: 600
 };
 /*** HELPERS ***/
-const qs=(s,el=document)=>el.querySelector(s); const qsa=(s,el=document)=>Array.from(el.querySelectorAll(s));
-const todayStr=()=>{const d=new Date(),p=n=>n<10?'0'+n:n;return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`};
-const on=(el,ev,selOrFn,fn)=> typeof selOrFn==='function' ? el.addEventListener(ev,selOrFn) : el.addEventListener(ev,e=>{const t=e.target.closest(selOrFn); if(t) fn(e,t);});
+function qs(s,el){return (el||document).querySelector(s);}
+function qsa(s,el){return Array.from((el||document).querySelectorAll(s));}
+function todayStr(){var d=new Date();var p=function(n){return n<10?("0"+n):n;};return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate());}
+function on(el,ev,selOrFn,maybeFn){
+  if(typeof selOrFn==="function"){el.addEventListener(ev,selOrFn);}
+  else{el.addEventListener(ev,function(e){var t=e.target.closest(selOrFn); if(t){maybeFn(e,t);}});}
+}
 /*** THEME ***/
-(function(){const t=localStorage.getItem('qc_theme')||'light';document.documentElement.setAttribute('data-theme',t);})();
-qs('#themeToggle').addEventListener('click',()=>{const c=document.documentElement.getAttribute('data-theme');const n=c==='dark'?'light':'dark';document.documentElement.setAttribute('data-theme',n);localStorage.setItem('qc_theme',n);});
+(function(){var t=localStorage.getItem("qc_theme")||"light";document.documentElement.setAttribute("data-theme",t);})();
+qs("#themeToggle").addEventListener("click",function(){
+  var c=document.documentElement.getAttribute("data-theme");
+  var n=(c==="dark")?"light":"dark";
+  document.documentElement.setAttribute("data-theme",n);
+  localStorage.setItem("qc_theme",n);
+});
 /*** TABS ***/
-on(qs('#tabs'),'click','.tab',(e,btn)=>{const t=btn.getAttribute('data-target'); qsa('.tabs .tab').forEach(b=>b.classList.toggle('active',b===btn)); qsa('.tabContent').forEach(s=>s.classList.toggle('active',s.id===t)); console.log('[TAB]',t);});
+on(qs("#tabs"),"click",".tab",function(e,btn){
+  var target=btn.getAttribute("data-target");
+  qsa(".tabs .tab").forEach(function(b){b.classList.toggle("active",b===btn);});
+  qsa(".tabContent").forEach(function(s){s.classList.toggle("active",s.id===target);});
+  console.log("[TAB]",target);
+});
 /*** DEFAULTS ***/
-qsa('input[type="date"]').forEach(i=>{if(!i.value) i.value=todayStr();});
-qsa('form.qcForm select').forEach(s=>{if(!s.value) s.value='OK';});
+qsa('input[type="date"]').forEach(function(i){ if(!i.value) i.value=todayStr(); });
+qsa("form.qcForm select").forEach(function(s){ if(!s.value) s.value="OK"; });
 /*** KO UI ***/
-on(document,'change','.qblock select',(e,sel)=>{const b=sel.closest('.qblock'); const d=qs('.koDetails',b); if(!d) return; const isKO=(sel.value||'').toUpperCase()==='KO'; d.classList.toggle('hidden',!isKO); qsa('input[type="file"]',d).forEach(f=>f.required=isKO); const ta=qs('textarea',d); if(ta) ta.required=isKO;});
+on(document,"change",".qblock select",function(e,sel){
+  var block=sel.closest(".qblock");
+  var details=qs(".koDetails",block);
+  if(!details) return;
+  var isKO=(sel.value||"").toUpperCase()==="KO";
+  details.classList.toggle("hidden",!isKO);
+  qsa('input[type="file"]',details).forEach(function(f){ f.required=isKO; });
+  var ta=qs("textarea",details); if(ta) ta.required=isKO;
+});
 /*** LOADER ***/
-let _loader=0; function showLoader(m){qs('#loaderMsg').textContent=m||'Chargement...'; qs('#globalLoader').style.display='flex'; _loader++;}
-function hideLoader(){_loader=Math.max(0,_loader-1); if(!_loader) qs('#globalLoader').style.display='none';}
+var _loader=0;
+function showLoader(m){qs("#loaderMsg").textContent=m||"Chargement..."; qs("#globalLoader").style.display="flex"; _loader++; }
+function hideLoader(){ _loader=Math.max(0,_loader-1); if(!_loader) qs("#globalLoader").style.display="none"; }
 /*** ZXING helpers ***/
 function getZXReader(){
   if(window.ZXingBrowser && ZXingBrowser.BrowserMultiFormatReader) return new ZXingBrowser.BrowserMultiFormatReader();
   if(window.ZXing && ZXing.BrowserMultiFormatReader) return new ZXing.BrowserMultiFormatReader();
-  alert('ZXing non chargé'); throw new Error('ZXing missing');
+  alert("ZXing non charge"); throw new Error("ZXing missing");
 }
 /*** SCANNER (live) ***/
-let SCAN={stream:null, reader:null, target:null, running:false};
-function openScannerFor(id){ SCAN.target=id; qs('#scannerModal').style.display='grid'; }
-async function startScanner(){
-  try{
-    if(!SCAN.reader) SCAN.reader=getZXReader();
-    const NS=(window.ZXingBrowser||window.ZXing);
-    if(SCAN.reader.setHints){ const hints=new Map(); hints.set(NS.DecodeHintType.POSSIBLE_FORMATS,[NS.BarcodeFormat.EAN_13,NS.BarcodeFormat.CODE_128,NS.BarcodeFormat.CODE_39]); SCAN.reader.setHints(hints); }
-    const v=qs('#scannerVideo'); v.setAttribute('playsinline','true'); v.muted=true;
-    const st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}}});
-    SCAN.stream=st; v.srcObject=st; await v.play(); SCAN.running=true;
-    const loop=async()=>{ if(!SCAN.running) return;
-      try{ const res=await SCAN.reader.decodeOnceFromVideoDevice(undefined,'scannerVideo'); const val=(res && (res.text || (res.getText&&res.getText())))?.trim(); if(val){ const inp=document.getElementById(SCAN.target); if(inp) inp.value=val; closeScanner(); return; } }catch(_){}
+var SCAN={stream:null,reader:null,target:null,running:false};
+function openScannerFor(id){ SCAN.target=id; qs("#scannerModal").style.display="grid"; }
+function startScanner(){
+  (async function(){
+    try{
+      if(!SCAN.reader) SCAN.reader=getZXReader();
+      var NS=(window.ZXingBrowser||window.ZXing);
+      if(SCAN.reader.setHints){
+        var hints=new Map();
+        hints.set(NS.DecodeHintType.POSSIBLE_FORMATS,[NS.BarcodeFormat.EAN_13,NS.BarcodeFormat.CODE_128,NS.BarcodeFormat.CODE_39]);
+        SCAN.reader.setHints(hints);
+      }
+      var v=qs("#scannerVideo"); v.setAttribute("playsinline","true"); v.muted=true;
+      var st=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1280},height:{ideal:720}}});
+      SCAN.stream=st; v.srcObject=st; await v.play(); SCAN.running=true;
+      var loop=async function(){
+        if(!SCAN.running) return;
+        try{
+          var res=await SCAN.reader.decodeOnceFromVideoDevice(undefined,"scannerVideo");
+          var val=(res && (res.text || (res.getText&&res.getText()))) ? (res.text || res.getText()).trim() : "";
+          if(val){
+            var inp=document.getElementById(SCAN.target); if(inp) inp.value=val;
+            closeScanner(); return;
+          }
+        }catch(err){}
+        setTimeout(loop,250);
+      };
       setTimeout(loop,250);
-    }; setTimeout(loop,250);
-  }catch(e){ alert("Caméra non accessible: "+(e&&e.message||e)); stopScanner(); }
+    }catch(e){
+      alert("Camera non accessible: "+(e&&e.message?e.message:e));
+      stopScanner();
+    }
+  })();
 }
-function stopScanner(){ SCAN.running=false; try{SCAN.reader&&SCAN.reader.reset&&SCAN.reader.reset();}catch(_){} if(SCAN.stream){SCAN.stream.getTracks().forEach(t=>{try{t.stop()}catch(_){}}); SCAN.stream=null;}}
-function closeScanner(){ stopScanner(); qs('#scannerModal').style.display='none'; }
-qs('#scannerStart').addEventListener('click',startScanner);
-qs('#scannerStop').addEventListener('click',stopScanner);
-qs('#scannerClose').addEventListener('click',closeScanner);
-/*** Décodage depuis image ***/
-function fileToDataURL(file){return new Promise((ok,ko)=>{const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(file);});}
+function stopScanner(){
+  SCAN.running=false;
+  try{ if(SCAN.reader && SCAN.reader.reset) SCAN.reader.reset(); }catch(err){}
+  if(SCAN.stream){ SCAN.stream.getTracks().forEach(function(t){ try{t.stop();}catch(_){}}); SCAN.stream=null; }
+}
+function closeScanner(){ stopScanner(); qs("#scannerModal").style.display="none"; }
+qs("#scannerStart").addEventListener("click",startScanner);
+qs("#scannerStop").addEventListener("click",stopScanner);
+qs("#scannerClose").addEventListener("click",closeScanner);
+/*** Decode depuis image ***/
+function fileToDataURL(file){ return new Promise(function(ok,ko){ var fr=new FileReader(); fr.onload=function(){ok(fr.result)}; fr.onerror=ko; fr.readAsDataURL(file); }); }
 async function decodeBarcodeFromFile(inputEl, targetId){
-  const f=inputEl.files && inputEl.files[0]; if(!f) return;
+  var f=inputEl.files && inputEl.files[0]; if(!f) return;
   try{
-    const dataURL=await fileToDataURL(f); const img=new Image(); await new Promise((ok,ko)=>{img.onload=ok; img.onerror=ko; img.src=dataURL;});
-    const reader=getZXReader();
-    const NS=(window.ZXingBrowser||window.ZXing);
-    if(reader.setHints){ const hints=new Map(); hints.set(NS.DecodeHintType.POSSIBLE_FORMATS,[NS.BarcodeFormat.EAN_13,NS.BarcodeFormat.CODE_128,NS.BarcodeFormat.CODE_39]); reader.setHints(hints); }
-    const res=await reader.decodeFromImage(img); const txt=(res && (res.text||(res.getText&&res.getText())))?.trim();
-    if(txt){ const target=document.getElementById(targetId); if(target) target.value=txt; } else alert("Aucun code-barres détecté sur l'image.");
-  }catch(e){ alert("Échec du décodage image : "+(e&&e.message||e)); }
+    var dataURL=await fileToDataURL(f);
+    var img=new Image();
+    await new Promise(function(ok,ko){ img.onload=ok; img.onerror=ko; img.src=dataURL; });
+    var reader=getZXReader();
+    var NS=(window.ZXingBrowser||window.ZXing);
+    if(reader.setHints){
+      var hints=new Map();
+      hints.set(NS.DecodeHintType.POSSIBLE_FORMATS,[NS.BarcodeFormat.EAN_13,NS.BarcodeFormat.CODE_128,NS.BarcodeFormat.CODE_39]);
+      reader.setHints(hints);
+    }
+    var res=await reader.decodeFromImage(img);
+    var txt=(res && (res.text || (res.getText&&res.getText()))) ? (res.text || res.getText()).trim() : "";
+    if(txt){ var target=document.getElementById(targetId); if(target) target.value=txt; }
+    else alert("Aucun code-barres detecte sur l'image.");
+  }catch(e){
+    alert("Echec du decodage image: "+(e&&e.message?e.message:e));
+  }
 }
-on(document,'change','input.barcode-photo',async(e,input)=>{await decodeBarcodeFromFile(input,input.getAttribute('data-target'));});
-/*** Boutons “Scanner” ***/
-on(document,'click','button[data-scan]',(e,btn)=>{openScannerFor(btn.getAttribute('data-scan'));});
-/*** Envoi (appel backend — désactivé en DIAG, juste UI) ***/
-on(document,'submit','form.qcForm',async(e,form)=>{e.preventDefault(); alert('DIAG : formulaire “‘+form.dataset.type+'” OK (UI).');});
+on(document,"change","input.barcode-photo",function(e,input){ decodeBarcodeFromFile(input, input.getAttribute("data-target")); });
+/*** Boutons Scanner ***/
+on(document,"click","button[data-scan]",function(e,btn){ openScannerFor(btn.getAttribute("data-scan")); });
+/*** Envoi (diag) ***/
+on(document,"submit","form.qcForm",function(e,form){
+  e.preventDefault();
+  alert('DIAG: formulaire "'+form.dataset.type+'" OK (UI).');
+});
 </script>
 </body>
 </html>
