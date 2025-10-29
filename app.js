@@ -190,28 +190,58 @@ async function resizeToLimit(file){
 async function filesToDataURLsLimited(list){ const out=[]; for(const f of Array.from(list||[])) out.push(await resizeToLimit(f)); return out; }
 
 /* ====== Build payload JSON ====== */
+// --- PATCH buildPayload (remplace entièrement la fonction) ---
 async function buildPayload(form){
   const date = qs('input[name="date_saisie"]', form).value.trim();
   const code = qs('input[name="code_barres"]', form).value.trim();
+
+  // photo principale (compressée)
   const main = qs('input[name="photo_principale"]', form).files[0];
   const photo_principale = main ? await resizeToLimit(main) : null;
 
-  const answers=[];
-  qsa('.qblock',form).forEach(b=>{
-    const sel=qs('select',b); if(!sel) return;
-    const field=sel.name, value=sel.value||'OK';
-    const details=qs('.koDetails',b);
-    let photos=[], commentaire='';
-    if((value||'').toUpperCase()==='KO' && details){
-      const files=qsa('input[type="file"]',details).flatMap(i=> Array.from(i.files||[]));
-      if(files.length) photos = await filesToDataURLsLimited(files);
-      const ta=qs('textarea',details); if(ta) commentaire=(ta.value||'').trim();
+  const answers = [];
+  const blocks = qsa('.qblock', form);
+
+  // Utiliser for...of pour pouvoir await
+  for (const b of blocks){
+    const sel = qs('select', b);
+    if (!sel) continue;
+
+    const field = sel.name;
+    const value = sel.value || 'OK';
+
+    let photos = [];
+    let commentaire = '';
+
+    if ((value || '').toUpperCase() === 'KO'){
+      const details = qs('.koDetails', b);
+      if (details){
+        // rassembler tous les <input type="file"> KO
+        const fileInputs = qsa('input[type="file"]', details);
+        const files = [];
+        for (const fi of fileInputs){
+          if (fi.files && fi.files.length){
+            for (const f of fi.files) files.push(f);
+          }
+        }
+        if (files.length){
+          // compression <= 600 Ko par image
+          photos = [];
+          for (const f of files){
+            photos.push(await resizeToLimit(f));
+          }
+        }
+        const ta = qs('textarea', details);
+        if (ta) commentaire = (ta.value || '').trim();
+      }
     }
-    answers.push({field,value,photos,commentaire});
-  });
+
+    answers.push({ field, value, photos, commentaire });
+  }
 
   return { date_jour: date, code_barres: code, photo_principale, answers };
 }
+
 
 /* ====== Submit vers Apps Script ====== */
 on(document,'submit','form.qcForm', async (e, form)=>{
