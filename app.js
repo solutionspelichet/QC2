@@ -244,10 +244,10 @@ async function decodeBarcodeFromFile(inputEl, targetId){
     const reader = getZXReader();
     setZXHints_(reader);
 
-    // img devient JPEG “safe” si la source était HEIC/HEIF
+    // 1) Image normalisée (HEIC -> JPEG, etc.)
     const img = await imageFromFileRaw_(file);
 
-    // Multi-rotations + multi-échelles
+    // 2) Essais multi-rotations + multi-échelles
     const rotations = [0, 90, 180, 270];
     const scales    = [1.0, 0.85, 0.7, 0.55, 0.42];
 
@@ -255,6 +255,7 @@ async function decodeBarcodeFromFile(inputEl, targetId){
       for(const sc of scales){
         const canvas = canvasFromImageNormalize_(img, sc, 1600, true, rot);
 
+        // a) ZXing direct canvas
         if(reader && reader.decodeFromCanvas){
           try{
             const res = await reader.decodeFromCanvas(canvas);
@@ -263,6 +264,7 @@ async function decodeBarcodeFromFile(inputEl, targetId){
           }catch(_){}
         }
 
+        // b) ZXing via JPEG -> <img>
         try{
           const url = canvas.toDataURL('image/jpeg', 0.92);
           const tmp = await imageFromDataURL_(url);
@@ -274,25 +276,37 @@ async function decodeBarcodeFromFile(inputEl, targetId){
           }
           if(txt){ const t=document.getElementById(targetId); if(t) t.value=txt; return; }
         }catch(_){}
+
+        // c) Fallback natif Apple/Chrome : BarcodeDetector sur le canvas
+        const bdVal = await detectWithBarcodeDetectorOnCanvas_(canvas);
+        if (bdVal){
+          const t=document.getElementById(targetId); if(t) t.value=bdVal; return;
+        }
       }
     }
+
     alert("Aucun code-barres détecté sur la photo. Éclaire bien, recadre et évite le flou.");
   }catch(e){
     alert("Échec décodage image : " + (e && e.message ? e.message : e));
   }
 }
 
+
 /* ---- Helpers images ---- */
 async function imageFromFileRaw_(file){
   let blob = file;
 
-  // iPhone : HEIC/HEIF → JPEG
-  const isHeic = /image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name || "");
-  if (isHeic && window.heic2any){
+  // iPhone : HEIC/HEIF (ou type vide / exotique) → JPEG
+  const looksHeic = /image\/heic|image\/heif/i.test(file.type || '')
+                 || /\.hei(c|f|x)$/i.test(file.name || '');
+  if ((looksHeic || !/^image\//i.test(file.type || '')) && window.heic2any){
     try{
-      blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.92 });
+      let out = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.92 });
+      // heic2any peut renvoyer un Blob OU un tableau de Blobs
+      if (Array.isArray(out)) out = out[0];
+      if (out instanceof Blob) blob = out;
     }catch(e){
-      console.warn("Conversion HEIC->JPEG échouée, on tente quand même:", e);
+      console.warn("HEIC->JPEG: conversion impossible, on tente en l'état", e);
     }
   }
 
@@ -310,6 +324,22 @@ async function imageFromFileRaw_(file){
     img.src = dataURL;
   });
 }
+async function detectWithBarcodeDetectorOnCanvas_(canvas){
+  if (typeof window.BarcodeDetector !== 'function') return null;
+  let bd = null;
+  try{
+    bd = new window.BarcodeDetector({ formats: ['ean_13','code_128','code_39'] });
+  }catch(_){
+    try{ bd = new window.BarcodeDetector({ formats: ['ean13','code128','code39'] }); }catch(_){ bd = null; }
+  }
+  if (!bd) return null;
+  try{
+    const codes = await bd.detect(canvas);
+    if (codes && codes.length) return (codes[0].rawValue || '').trim() || null;
+  }catch(_){}
+  return null;
+}
+
 function imageFromDataURL_(dataURL){
   return new Promise((ok,ko)=>{ const img=new Image(); img.onload=()=>ok(img); img.onerror=ko; img.src=dataURL; });
 }
@@ -325,8 +355,8 @@ function canvasFromImageNormalize_(img, scale, maxDim, boostContrast, rotateDeg)
   const maxSide = Math.max(iw, ih);
   let rw = iw, rh = ih;
   if(maxSide > maxDim){ const sc = maxDim / maxSide; rw = Math.round(rw*sc); rh = Math.round(rh*sc); }
-  rw = Math.max(8, Math.round(rw*scale));
-  rh = Math.max(8, Math.round(rh*scale));
+  rw = Math.max(16, Math.round(rw*scale));
+  rh = Math.max(16, Math.round(rh*scale));
 
   const rot = (rotateDeg||0) % 360;
   const rad = rot * Math.PI / 180;
@@ -335,6 +365,7 @@ function canvasFromImageNormalize_(img, scale, maxDim, boostContrast, rotateDeg)
 
   const c=document.createElement('canvas'); c.width=sw; c.height=sh;
   const ctx=c.getContext('2d', {alpha:false, desynchronized:true});
+
   ctx.save();
   ctx.translate(sw/2, sh/2);
   ctx.rotate(rad);
@@ -342,7 +373,8 @@ function canvasFromImageNormalize_(img, scale, maxDim, boostContrast, rotateDeg)
   ctx.restore();
 
   if(boostContrast){
-    const id=ctx.getImageData(0,0,sw,sh), d=id.data, gamma=0.9, contrast=1.25, mid=128;
+    const id=ctx.getImageData(0,0,sw,sh), d=id.data;
+    const gamma=0.9, contrast=1.28, mid=128;
     for(let i=0;i<d.length;i+=4){
       let r=d[i], g=d[i+1], b=d[i+2];
       r=255*Math.pow(r/255,gamma); g=255*Math.pow(g/255,gamma); b=255*Math.pow(b/255,gamma);
@@ -353,6 +385,7 @@ function canvasFromImageNormalize_(img, scale, maxDim, boostContrast, rotateDeg)
   }
   return c;
 }
+
 
 /* ===================================================================== */
 /* ========================= FIN SCANNER REWORK ======================== */
