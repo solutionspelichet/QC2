@@ -14,9 +14,9 @@
   <!-- UI -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Libs -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4" defer></script>
-  <script src="https://unpkg.com/@zxing/library@latest" defer></script>
+  <!-- Libs (chargées avant app.js) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://unpkg.com/@zxing/library@latest"></script>
 </head>
 <body>
   <header class="topbar">
@@ -25,7 +25,7 @@
     <button id="themeToggle" class="icon-btn" title="Clair/Sombre">☀️/🌙</button>
   </header>
 
-  <nav class="tabs">
+  <nav class="tabs" id="tabs">
     <button class="tab active" data-target="tabCartons">Cartons</button>
     <button class="tab" data-target="tabPA">Palettes Avant</button>
     <button class="tab" data-target="tabPD">Palettes Destination</button>
@@ -49,6 +49,8 @@
             <input id="cartons_code" name="code_barres" type="text" inputmode="numeric" required />
             <button type="button" class="btn" data-scan="cartons_code">Scanner</button>
           </div>
+          <small>ou</small>
+          <input type="file" class="barcode-photo" data-target="cartons_code" accept="image/*" capture="environment" />
         </div>
 
         <div class="row">
@@ -134,6 +136,8 @@
             <input id="pa_code" name="code_barres" type="text" required />
             <button type="button" class="btn" data-scan="pa_code">Scanner</button>
           </div>
+          <small>ou</small>
+          <input type="file" class="barcode-photo" data-target="pa_code" accept="image/*" capture="environment" />
         </div>
 
         <div class="row">
@@ -219,6 +223,8 @@
             <input id="pd_code" name="code_barres" type="text" required />
             <button type="button" class="btn" data-scan="pd_code">Scanner</button>
           </div>
+          <small>ou</small>
+          <input type="file" class="barcode-photo" data-target="pd_code" accept="image/*" capture="environment" />
         </div>
 
         <div class="row">
@@ -280,7 +286,7 @@
     </div>
   </div>
 
-  <!-- App -->
+  <!-- App (à la fin, sans defer) -->
   <script src="app.js"></script>
 </body>
 </html>
