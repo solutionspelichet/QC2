@@ -1,30 +1,59 @@
-/* ================= CONFIG ================= */
+/* ========================== CONFIG ========================== */
 var CONFIG = {
   WEBAPP_BASE_URL: "https://script.google.com/macros/s/AKfycbyy826nPPtVW-HpyUSqzhJ-Eoq42_-rXhYHW3WXi3rT9cZ61dW264c7DDnfagnrXjM7/exec",
-  MAX_IMAGE_DIM: 1600,
-  MAX_FILE_SIZE_KB: 600,
-  QUALITY: 0.85
+  MAX_IMAGE_DIM: 1600,   // redimension long côté
+  MAX_FILE_SIZE_KB: 600, // taille cible après compression
+  QUALITY: 0.85          // qualité JPEG par défaut
 };
 
-/* ================= Utils ================= */
+/* ========================== HELPERS ========================== */
 const qs  = (s, el=document)=> el.querySelector(s);
 const qsa = (s, el=document)=> Array.from(el.querySelectorAll(s));
 function on(el, ev, selOrFn, maybeFn){
   if(typeof selOrFn==='function'){ el.addEventListener(ev, selOrFn); }
   else{ el.addEventListener(ev, e=>{ const t=e.target.closest(selOrFn); if(t) maybeFn(e,t); }); }
 }
-const todayStr = ()=>{ const d=new Date(), p=n=>n<10?'0'+n:n; return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
+const todayStr = ()=>{
+  const d=new Date(), p=n=>n<10?'0'+n:n;
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+};
+function loadScriptOnce(src){
+  return new Promise((resolve,reject)=>{
+    if ([...document.scripts].some(s => s.src === src)) return resolve();
+    const s=document.createElement('script');
+    s.src=src; s.async=true;
+    s.onload=()=>resolve();
+    s.onerror=()=>reject(new Error('Échec chargement script: '+src));
+    document.head.appendChild(s);
+  });
+}
+async function ensureQuagga(){
+  if (window.Quagga) return;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/quagga@1.2.6/dist/quagga.min.js');
+  if (!window.Quagga) throw new Error('Quagga introuvable');
+}
+async function ensureHeic2Any(){
+  if (window.heic2any) return;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
+}
+async function ensureChart(){
+  if (window.Chart) return;
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js');
+}
 
-/* ================= Thème ================= */
-(function(){const t=localStorage.getItem('qc_theme')||'light';document.documentElement.setAttribute('data-theme',t);})();
-qs('#themeToggle')?.addEventListener('click',()=>{
+/* ===================== Thème clair/sombre ===================== */
+(function initTheme(){
+  const t = localStorage.getItem('qc_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+})();
+qs('#themeToggle')?.addEventListener('click', ()=>{
   const cur=document.documentElement.getAttribute('data-theme');
   const nxt=cur==='dark'?'light':'dark';
   document.documentElement.setAttribute('data-theme',nxt);
   localStorage.setItem('qc_theme',nxt);
 });
 
-/* ================= Tabs ================= */
+/* ============================ Tabs ============================ */
 on(document,'click','.tabs .tab',(e,btn)=>{
   const target=btn.getAttribute('data-target');
   qsa('.tabs .tab').forEach(b=>b.classList.toggle('active',b===btn));
@@ -32,10 +61,10 @@ on(document,'click','.tabs .tab',(e,btn)=>{
   if(target==='tabKPI'){ loadAndRenderKPI().catch(()=>{}); }
 });
 
-/* ================= Defaults ================= */
+/* ==================== Valeurs par défaut ====================== */
 qsa('input[type="date"]').forEach(i=>{ if(!i.value) i.value=todayStr(); });
 
-/* ================= KO visibility ================= */
+/* =================== Radios OK/KO & KO box ==================== */
 function updateKoVisibilityForGroup(container){
   const radios=qsa('input[type="radio"]',container);
   if(!radios.length) return;
@@ -44,7 +73,7 @@ function updateKoVisibilityForGroup(container){
   const box=qs('.koDetails',container);
   if(box){
     box.classList.toggle('hidden',!isKO);
-    qsa('input[type="file"], textarea',box).forEach(el=> el.required=isKO);
+    qsa('input[type="file"],textarea',box).forEach(el=> el.required=isKO);
   }
 }
 on(document,'change','.control-item input[type="radio"]',(e,radio)=>{
@@ -52,82 +81,83 @@ on(document,'change','.control-item input[type="radio"]',(e,radio)=>{
 });
 qsa('.control-item').forEach(updateKoVisibilityForGroup);
 
-/* ================= Loader ================= */
+/* ============================ Loader ========================== */
 let _loader=0;
-function showLoader(msg){const M=qs('#globalLoader'); if(!M)return; qs('#loaderMsg').textContent=msg||'Chargement…'; M.style.display='flex'; _loader++;}
-function hideLoader(){const M=qs('#globalLoader'); if(!M)return; _loader=Math.max(0,_loader-1); if(!_loader) M.style.display='none';}
+function showLoader(msg){
+  const M=qs('#globalLoader'); if(!M) return;
+  qs('#loaderMsg').textContent=msg||'Chargement…';
+  M.style.display='flex'; _loader++;
+}
+function hideLoader(){
+  const M=qs('#globalLoader'); if(!M) return;
+  _loader=Math.max(0,_loader-1);
+  if(!_loader) M.style.display='none';
+}
 
-/* ===================================================================== */
-/* ============================ QUAGGA 2 =============================== */
-/* ===================================================================== */
-
-/* ----- Live scanner (caméra) ----- */
+/* ========================= SCAN CAMÉRA ======================== */
 let SCAN={target:null, running:false};
-
 function openScannerFor(inputId){
   SCAN.target=inputId;
-  const modal=qs('#scannerModal'); modal.style.display='grid';
+  qs('#scannerModal').style.display='grid';
 }
-
-function startScanner(){
-  if(!window.Quagga){ alert('Librairie de scan indisponible.'); return; }
-  // Nettoyage préalable
-  try{ Quagga.stop(); }catch{} 
-  const videoEl=qs('#scannerVideo');
-  videoEl.setAttribute('playsinline','true'); // iOS
-
-  // Config Quagga
-  Quagga.init({
-    inputStream: {
-      type: "LiveStream",
-      target: videoEl,
-      constraints: {
-        facingMode: "environment",
-        width: { ideal: 1280 }, height: { ideal: 720 }
+async function startScanner(){
+  try{
+    await ensureQuagga();
+    // Clean avant re-init
+    try{ Quagga.stop(); }catch{}
+    const videoEl=qs('#scannerVideo');
+    videoEl.setAttribute('playsinline','true'); // iOS
+    Quagga.init({
+      inputStream:{
+        type:'LiveStream',
+        target: videoEl,
+        constraints: {
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height:{ ideal: 720 }
+        }
+      },
+      decoder:{
+        readers: ['ean_reader','code_128_reader','code_39_reader'],
+        multiple:false
+      },
+      locate:true,
+      locator:{ halfSample:true, patchSize:'medium' }
+    }, (err)=>{
+      if(err){ alert("Caméra indisponible : "+(err.message||err)); return; }
+      Quagga.start(); SCAN.running=true;
+    });
+    Quagga.offDetected?.();
+    Quagga.onDetected((res)=>{
+      const code = res?.codeResult?.code ? String(res.codeResult.code).trim() : '';
+      if(code){
+        document.getElementById(SCAN.target).value = code;
+        closeScanner();
       }
-    },
-    decoder: {
-      readers: ["ean_reader","code_128_reader","code_39_reader"],
-      multiple: false
-    },
-    locate: true,
-    locator: { halfSample: true, patchSize: "medium" }
-  }, (err)=>{
-    if(err){ alert("Caméra indisponible: "+err.message); return; }
-    Quagga.start();
-    SCAN.running=true;
-  });
-
-  Quagga.offDetected(); // éviter doublons d’abonnements
-  Quagga.onDetected((data)=>{
-    const code = (data && data.codeResult && data.codeResult.code) ? String(data.codeResult.code).trim() : "";
-    if(code){
-      document.getElementById(SCAN.target).value = code;
-      closeScanner();
-    }
-  });
+    });
+  }catch(e){
+    alert("Scanner indisponible : "+(e?.message||e));
+    stopScanner();
+    // Fallback : ouvrir le picker lié
+    const picker = qsa('input.barcode-photo').find(i => i.getAttribute('data-target')===SCAN.target);
+    if(picker) picker.click();
+  }
 }
-
 function stopScanner(){
   if(SCAN.running){
     try{ Quagga.stop(); }catch{}
     SCAN.running=false;
   }
 }
-
-function closeScanner(){
-  stopScanner();
-  qs('#scannerModal').style.display='none';
-}
-
+function closeScanner(){ stopScanner(); qs('#scannerModal').style.display='none'; }
 qs('#scannerStart')?.addEventListener('click', startScanner);
 qs('#scannerStop')?.addEventListener('click', stopScanner);
 qs('#scannerClose')?.addEventListener('click', closeScanner);
 on(document,'click','button[data-scan]',(e,btn)=> openScannerFor(btn.getAttribute('data-scan')));
 
-/* ----- Décodage depuis fichier (photo / galerie) ----- */
+/* ==================== DÉCODAGE VIA FICHIER ==================== */
 on(document,'change','input.barcode-photo', async (e,input)=>{
-  const targetId = input.getAttribute('data-target');
+  const targetId=input.getAttribute('data-target');
   try{
     const code = await decodeBarcodeFromImageFile(input.files?.[0]);
     if(code) document.getElementById(targetId).value = code;
@@ -137,46 +167,40 @@ on(document,'change','input.barcode-photo', async (e,input)=>{
     input.value='';
   }
 });
-
 async function decodeBarcodeFromImageFile(file){
   if(!file) throw new Error('Aucun fichier.');
-
-  // iPhone HEIC/HEIF → JPEG si possible
-  let blob = file;
-  if(/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||"")){
-    try{ blob = await heic2any({ blob:file, toType:"image/jpeg", quality:0.92 }); }
-    catch(e){ /* on tente sans conversion */ }
+  await ensureQuagga();
+  // HEIC → JPEG si possible (iPhone)
+  let blob=file;
+  if(/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||'')){
+    try{ await ensureHeic2Any(); blob = await heic2any({ blob:file, toType:'image/jpeg', quality:0.92 }); }catch{}
   }
-
   const dataURL = await readAsDataURL(blob);
   return new Promise((resolve,reject)=>{
-    if(!window.Quagga){ reject(new Error('Quagga non chargé')); return; }
+    if(!window.Quagga) { reject(new Error('Quagga non chargé')); return; }
     Quagga.decodeSingle({
       src: dataURL,
-      numOfWorkers: 0, // iOS compatibility
-      inputStream: { size: 1600 }, // normalisation
-      decoder: { readers: ["ean_reader","code_128_reader","code_39_reader"] },
+      numOfWorkers: 0, // compat iOS
+      inputStream: { size: 1600 },
+      decoder: { readers: ['ean_reader','code_128_reader','code_39_reader'] },
       locate: true
     }, (result)=>{
-      const code = result && result.codeResult && result.codeResult.code;
-      if(code) resolve(String(code).trim());
-      else reject(new Error("Aucun code-barres détecté (photo floue/sombre ?)."));
+      const code = result?.codeResult?.code ? String(result.codeResult.code).trim() : '';
+      if(code) resolve(code);
+      else reject(new Error('Aucun code-barres détecté (photo floue/sombre ?).'));
     });
   });
 }
-
-/* Helpers image */
 function readAsDataURL(blobOrFile){
   return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(blobOrFile); });
 }
 
-/* ===================================================================== */
-/* ============== Compression images principales / KO ================== */
+/* ================== COMPRESSION ≤ 600 KB ====================== */
 function imageFromFile(file){ return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>{ const img=new Image(); img.onload=()=>ok(img); img.onerror=ko; img.src=fr.result; }; fr.onerror=ko; fr.readAsDataURL(file); }); }
 async function resizeToLimit(file){
   let src=file;
-  if(/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||"")){
-    try{ src=await heic2any({ blob:file, toType:"image/jpeg", quality:0.95 }); }catch{}
+  if(/image\/heic|image\/heif/i.test(file.type)||/\.heic$/i.test(file.name||'')){
+    try{ await ensureHeic2Any(); src = await heic2any({ blob:file, toType:'image/jpeg', quality:0.95 }); }catch{}
   }
   const img=await imageFromFile(src);
   const maxDim=CONFIG.MAX_IMAGE_DIM, mime='image/jpeg';
@@ -190,7 +214,7 @@ async function resizeToLimit(file){
   return out;
 }
 
-/* ===================== Build payload ===================== */
+/* ====================== BUILD PAYLOAD ======================== */
 async function buildPayload(form){
   const date=qs('input[name="date_saisie"]',form).value.trim();
   const code=qs('input[name="code_barres"]',form).value.trim();
@@ -206,7 +230,7 @@ async function buildPayload(form){
     const value=checked?checked.value:'OK';
 
     let photos=[], commentaire='';
-    if(value==='KO'){
+    if(String(value).toUpperCase()==='KO'){
       const box=qs('.koDetails',ci);
       const files=[];
       qsa('input[type="file"]',box).forEach(i=>{ if(i.files) files.push(...i.files); });
@@ -218,18 +242,17 @@ async function buildPayload(form){
   return { date_jour:date, code_barres:code, photo_principale, answers };
 }
 
-/* ===================== Submit ===================== */
+/* ========================= SUBMIT ============================ */
 on(document,'submit','form.qcForm', async (e,form)=>{
   e.preventDefault();
 
-  // Validation KO
+  // Validation KO : photo(s) + commentaire
   let ok=true;
   qsa('.control-item',form).forEach(ci=>{
     const checked=qsa('input[type="radio"]',ci).find(r=>r.checked);
-    const isKO=(checked?.value||'')==='KO';
-    if(isKO){
+    if((checked?.value||'').toUpperCase()==='KO'){
       const box=qs('.koDetails',ci);
-      const hasFile=qsa('input[type="file"]',box).some(i=>i.files&&i.files.length);
+      const hasFile=qsa('input[type="file"]',box).some(i=> i.files && i.files.length);
       const hasCom=(qs('textarea',box)?.value||'').trim().length>0;
       if(!hasFile||!hasCom) ok=false;
     }
@@ -252,7 +275,7 @@ on(document,'submit','form.qcForm', async (e,form)=>{
     if(!js.ok){ alert('Erreur backend: '+(js.error||'inconnue')); }
     else{
       alert('✔ Enregistré');
-      // reset soft
+      // Reset léger (reste sur l’onglet)
       qsa('.control-item',form).forEach(ci=>{
         const okR=qsa('input[type="radio"][value="OK"]',ci)[0];
         if(okR) okR.checked=true;
@@ -271,10 +294,11 @@ on(document,'submit','form.qcForm', async (e,form)=>{
   finally{ hideLoader(); }
 });
 
-/* ===================== KPI ===================== */
+/* ========================== KPI ============================== */
 let CHARTS=[];
 async function loadAndRenderKPI(){
   if(!CONFIG.WEBAPP_BASE_URL){ qs('#kpiResults').textContent='Backend non configuré'; return; }
+  await ensureChart();
   const url=new URL(CONFIG.WEBAPP_BASE_URL); url.searchParams.set('route','kpi');
   const box=qs('#kpiResults'); box.textContent='Chargement KPI…'; showLoader('Chargement KPI…');
   try{
@@ -326,10 +350,10 @@ function renderKPI(kpi){
 }
 qs('#btnKpiRefresh')?.addEventListener('click', ()=> loadAndRenderKPI().catch(()=>{}) );
 
-/* ===================== Export CSV / XLSX ===================== */
+/* ======================= Export CSV/XLSX ======================= */
 function downloadBlob_(blob, filename){
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
   setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 200);
 }
 async function doExport_(fmt){
