@@ -1,25 +1,28 @@
 /* ================= CONFIG ================= */
 var CONFIG = {
   WEBAPP_BASE_URL: "https://script.google.com/macros/s/AKfycbyy826nPPtVW-HpyUSqzhJ-Eoq42_-rXhYHW3WXi3rT9cZ61dW264c7DDnfagnrXjM7/exec",
-  MAX_IMAGE_DIM: 1600,
-  MAX_FILE_SIZE_KB: 600,
-  QUALITY: 0.85
+  MAX_IMAGE_DIM: 1600,        // redimension long côté
+  MAX_FILE_SIZE_KB: 600,      // cible max après compression
+  QUALITY: 0.85               // qualité JPEG par défaut
 };
 
 /* ================= Utils ================= */
 const qs  = (s, el=document)=> el.querySelector(s);
 const qsa = (s, el=document)=> Array.from(el.querySelectorAll(s));
-const todayStr = ()=>{
-  const d=new Date(), p=n=>n<10?'0'+n:n;
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-};
 function on(el, ev, selOrFn, maybeFn){
   if(typeof selOrFn==='function'){ el.addEventListener(ev, selOrFn); }
   else{ el.addEventListener(ev, e=>{ const t=e.target.closest(selOrFn); if(t) maybeFn(e,t); }); }
 }
+const todayStr = ()=>{
+  const d=new Date(), p=n=>n<10?'0'+n:n;
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
+};
 
-/* ================= Theme ================= */
-(function(){ const t=localStorage.getItem('qc_theme')||'light'; document.documentElement.setAttribute('data-theme', t); })();
+/* ================= Thème clair/sombre ================= */
+(function initTheme(){
+  const t = localStorage.getItem('qc_theme') || 'light';
+  document.documentElement.setAttribute('data-theme', t);
+})();
 qs('#themeToggle')?.addEventListener('click', ()=>{
   const cur=document.documentElement.getAttribute('data-theme');
   const nxt=cur==='dark'?'light':'dark';
@@ -29,29 +32,28 @@ qs('#themeToggle')?.addEventListener('click', ()=>{
 
 /* ================= Tabs ================= */
 on(document, 'click', '.tabs .tab', (e,btn)=>{
-  const target=btn.getAttribute('data-target');
+  const target = btn.getAttribute('data-target');
   qsa('.tabs .tab').forEach(b=> b.classList.toggle('active', b===btn));
-  qsa('.tabContent').forEach(s=> s.classList.toggle('active', s.id===target));
+  qsa('.tabContent').forEach(sec=> sec.classList.toggle('active', sec.id===target));
   if(target==='tabKPI'){ loadAndRenderKPI().catch(()=>{}); }
 });
 
-/* ================= Defaults ================= */
+/* ================= Valeurs par défaut ================= */
 qsa('input[type="date"]').forEach(i=>{ if(!i.value) i.value=todayStr(); });
 
-/* Radios KO => afficher koDetails */
+/* ================= Gestion KO: affiche zone photo+commentaire ================= */
 function updateKoVisibilityForGroup(container){
   const radios = qsa('input[type="radio"]', container);
   if(!radios.length) return;
-  const checked = radios.find(r=>r.checked);
+  const checked = radios.find(r=> r.checked);
   const isKO = (checked?.value||'').toUpperCase()==='KO';
-  qs('.koDetails', container)?.classList.toggle('hidden', !isKO);
   const box = qs('.koDetails', container);
   if(box){
-    // champs KO requis si KO
+    box.classList.toggle('hidden', !isKO);
     qsa('input[type="file"], textarea', box).forEach(el=> el.required = isKO);
   }
 }
-on(document, 'change', '.control-item input[type="radio"]', (e, radio)=>{
+on(document, 'change', '.control-item input[type="radio"]', (e,radio)=>{
   updateKoVisibilityForGroup(radio.closest('.control-item'));
 });
 qsa('.control-item').forEach(updateKoVisibilityForGroup);
@@ -86,7 +88,7 @@ async function getBarcodeDetector(){
   if(!hasBarcodeDetector) return null;
   if(!BD){
     try{ BD = new BarcodeDetector({formats:['ean_13','code_128','code_39']}); }
-    catch(_){ try{ BD = new BarcodeDetector({formats:['ean13','code128','code39']}); } catch(e){ BD=null; } }
+    catch(_){ try{ BD = new BarcodeDetector({formats:['ean13','code128','code39']}); } catch{ BD=null; } }
   }
   return BD;
 }
@@ -95,12 +97,12 @@ let SCAN = { stream:null, target:null, running:false, raf:0 };
 function openScannerFor(id){ SCAN.target=id; qs('#scannerModal').style.display='grid'; }
 async function startScanner(){
   try{
-    const v = qs('#scannerVideo'); v.setAttribute('playsinline','true'); v.muted=true;
+    const v=qs('#scannerVideo'); v.setAttribute('playsinline','true'); v.muted=true;
     const st = await navigator.mediaDevices.getUserMedia({audio:false, video:{facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720}}});
     SCAN.stream=st; v.srcObject=st; await v.play(); SCAN.running=true;
 
     const bd = await getBarcodeDetector();
-    const canvas = document.createElement('canvas'); const ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
+    const canvas=document.createElement('canvas'); const ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
 
     const step = async ()=>{
       if(!SCAN.running) return;
@@ -109,13 +111,13 @@ async function startScanner(){
       canvas.width=w; canvas.height=h; ctx.drawImage(v,0,0,w,h);
       try{
         if(bd){
-          const codes = await bd.detect(canvas);
+          const codes=await bd.detect(canvas);
           if(codes && codes.length){ const code=(codes[0].rawValue||'').trim(); if(code){ document.getElementById(SCAN.target).value=code; closeScanner(); return; } }
         }else{
           const reader=getZXReader(); setZXHints_(reader);
           try{
-            const res = await reader.decodeFromCanvas(canvas);
-            const txt = (res && (res.text || (res.getText&&res.getText())))?.trim();
+            const res=await reader.decodeFromCanvas(canvas);
+            const txt=(res && (res.text || (res.getText&&res.getText())))?.trim();
             if(txt){ document.getElementById(SCAN.target).value=txt; closeScanner(); return; }
           }catch(_){}
         }
@@ -126,7 +128,6 @@ async function startScanner(){
   }catch(e){
     alert("Caméra non accessible. Utilisez l’upload photo pour décoder.");
     stopScanner();
-    // fallback: ouvrir file input correspondant si dispo
     const inputFile = qsa('input.barcode-photo').find(i => i.getAttribute('data-target')===SCAN.target);
     if(inputFile) inputFile.click();
   }
@@ -142,48 +143,64 @@ qs('#scannerStop')?.addEventListener('click', stopScanner);
 qs('#scannerClose')?.addEventListener('click', closeScanner);
 on(document,'click','button[data-scan]',(e,btn)=> openScannerFor(btn.getAttribute('data-scan')));
 
-/* ===================== Upload → décodage (iPhone HEIC OK) ===================== */
+/* ===================================================================== */
+/* ======== DÉCODAGE DEPUIS FICHIER (iPhone HEIC/HEIF → JPEG OK) ======== */
+/* ===================================================================== */
 on(document,'change','input.barcode-photo', async (e,input)=>{ await decodeBarcodeFromFile(input, input.getAttribute('data-target')); });
 
 async function decodeBarcodeFromFile(inputEl, targetId){
   const file = inputEl.files && inputEl.files[0];
   if(!file) return;
+
   try{
     const reader = getZXReader(); setZXHints_(reader);
 
-    // DataURL
-    const dataURL = await new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(file); });
+    // 1) Lire en DataURL (plus robuste sur Safari iOS)
+    const dataURL = await readFileAsDataURL_(file);
     let finalDataURL = dataURL;
 
-    // HEIC -> JPEG si possible
+    // 2) Conversion HEIC/HEIF → JPEG si possible (Safari renvoie souvent HEIC depuis la galerie)
     if (/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||"")) {
       try{
         const blob = await heic2any({ blob:file, toType:"image/jpeg", quality:0.92 });
-        finalDataURL = await new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(blob); });
-      }catch(e){ console.warn('HEIC→JPEG impossible, on tente direct.', e); }
+        finalDataURL = await readBlobAsDataURL_(blob);
+      }catch(e){
+        console.warn("Conversion HEIC→JPEG impossible, on tente quand même le DataURL d’origine.", e);
+      }
     }
 
-    const img = await imageFromDataURL_(finalDataURL);
-    const rotations=[0,90,180,270], scales=[1.0,0.85,0.7,0.55];
+    // 3) Image HTML
+    const img = await loadImage_(finalDataURL);
 
-    for(const rot of rotations){
-      for(const sc of scales){
+    // 4) Normalisation + rotations + multi-échelles
+    const rotations = [0,90,180,270];
+    const scales    = [1.0,0.85,0.7,0.55];
+    for (const rot of rotations){
+      for (const sc of scales){
         const canvas = canvasFromImageNormalize_(img, sc, 1600, true, rot);
+        // Essai ZXing
         try{
           const res = await reader.decodeFromCanvas(canvas);
-          const txt = (res && (res.text || (res.getText&&res.getText())))?.trim();
+          const txt = (res && (res.text || (res.getText && res.getText())))?.trim();
           if(txt){ const t=document.getElementById(targetId); if(t) t.value=txt; return; }
         }catch(_){}
       }
     }
-    alert("Aucun code-barres détecté. Essayez une photo nette et bien éclairée.");
+
+    alert("❌ Aucun code-barres détecté. Prenez une photo nette et bien éclairée.");
   }catch(e){
-    alert("Erreur décodage image : " + (e?.message||e));
+    alert("Erreur décodage image : " + (e?.message || e));
   }
 }
 
-function imageFromDataURL_(dataURL){
-  return new Promise((ok,ko)=>{ const img=new Image(); img.onload=()=>ok(img); img.onerror=ko; img.src=dataURL; });
+function readFileAsDataURL_(file){
+  return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(file); });
+}
+function readBlobAsDataURL_(blob){
+  return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(blob); });
+}
+function loadImage_(dataURL){
+  return new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=dataURL; });
 }
 function canvasFromImageNormalize_(img, scale, maxDim, boostContrast, rotateDeg){
   const iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
@@ -204,17 +221,24 @@ function canvasFromImageNormalize_(img, scale, maxDim, boostContrast, rotateDeg)
       let r=d[i], g=d[i+1], b=d[i+2];
       r=255*Math.pow(r/255,gamma); g=255*Math.pow(g/255,gamma); b=255*Math.pow(b/255,gamma);
       r=(r-mid)*contrast+mid; g=(g-mid)*contrast+mid; b=(b-mid)*contrast+mid;
-      d[i]=r<0?0:r>255?255:r; d[i+1]=g<0?0:g>255?255:g; d[i+2]=b<0?0:b>255?255:b;
+      d[i]=r<0?0:r>255?255:r; d[i+1]=g<0?0:g>255?255:g; d[i+2]=b<0?0:b>255?b;
     }
     ctx.putImageData(id,0,0);
   }
   return c;
 }
 
-/* ===================== Compression images (≤600KB) ===================== */
+/* ===================================================================== */
+/* ==================== Compression images ≤600 KB ===================== */
 function imageFromFile(file){ return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>{ const img=new Image(); img.onload=()=>ok(img); img.onerror=ko; img.src=fr.result; }; fr.onerror=ko; fr.readAsDataURL(file); }); }
 async function resizeToLimit(file){
-  const img=await imageFromFile(file);
+  // HEIC -> JPEG avant redimension si nécessaire (pour compat)
+  let srcFile=file;
+  if(/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||"")){
+    try{ srcFile = await heic2any({ blob:file, toType:"image/jpeg", quality:0.95 }); }
+    catch(_){ srcFile=file; }
+  }
+  const img=await imageFromFile(srcFile);
   const maxDim=CONFIG.MAX_IMAGE_DIM, mime='image/jpeg';
   let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height, sc=1;
   if(w>h && w>maxDim) sc=maxDim/w; if(h>=w && h>maxDim) sc=maxDim/h; if(sc<=0) sc=1;
@@ -223,23 +247,21 @@ async function resizeToLimit(file){
   let q=CONFIG.QUALITY||0.85; let out=c.toDataURL(mime,q);
   const toKB=d=>Math.round((d.length*3/4)/1024);
   while(toKB(out)>(CONFIG.MAX_FILE_SIZE_KB||600) && q>0.4){ q=Math.max(0.4,q-0.08); out=c.toDataURL(mime,q); }
-  return out;
+  return out; // DataURL
 }
 
-/* ===================== Build payload (radios + KO) ===================== */
+/* ===================== Construction payload ===================== */
 async function buildPayload(form){
   const date = qs('input[name="date_saisie"]',form).value.trim();
   const code = qs('input[name="code_barres"]',form).value.trim();
-
-  // photo principale compressée
   const main = qs('input[name="photo_principale"]',form)?.files?.[0];
   const photo_principale = main ? await resizeToLimit(main) : null;
 
-  const answers=[];
-  qsa('.control-item', form).forEach(ci=> answers.push(ci)); // DOM list
-
   const out=[];
-  for(const ci of answers){
+  qsa('.control-item', form).forEach(ci=> out.push(ci));
+
+  const answers=[];
+  for(const ci of out){
     const radios = qsa('input[type="radio"]', ci);
     if(!radios.length) continue;
     const name = radios[0].name;
@@ -250,7 +272,6 @@ async function buildPayload(form){
     if((value||'').toUpperCase()==='KO'){
       const box = qs('.koDetails', ci);
       if(box){
-        // toutes les photos KO
         const fi = qsa('input[type="file"]', box);
         const files=[];
         fi.forEach(inp=>{
@@ -263,17 +284,17 @@ async function buildPayload(form){
         if(ta) commentaire = (ta.value||'').trim();
       }
     }
-    out.push({ field:name, value, photos, commentaire });
+    answers.push({ field:name, value, photos, commentaire });
   }
 
-  return { date_jour:date, code_barres:code, photo_principale, answers: out };
+  return { date_jour:date, code_barres:code, photo_principale, answers };
 }
 
 /* ===================== Submit ===================== */
 on(document,'submit','form.qcForm', async (e,form)=>{
   e.preventDefault();
 
-  // Validation KO: chaque KO => photo(s) + commentaire
+  // Validation KO (photo(s) + commentaire)
   let ok=true;
   qsa('.control-item', form).forEach(ci=>{
     const checked = qsa('input[type="radio"]', ci).find(r=>r.checked);
@@ -285,7 +306,7 @@ on(document,'submit','form.qcForm', async (e,form)=>{
       if(!hasFile || !hasComment) ok=false;
     }
   });
-  if(!ok){ alert('Pour chaque KO : photo(s) et commentaire obligatoires.'); return; }
+  if(!ok){ alert('Pour chaque KO : photo(s) ET commentaire obligatoires.'); return; }
 
   if(!CONFIG.WEBAPP_BASE_URL){ alert('URL backend non configurée.'); return; }
   const type=form.dataset.type;
@@ -303,13 +324,13 @@ on(document,'submit','form.qcForm', async (e,form)=>{
     if(!js.ok){ alert('Erreur backend: '+(js.error||'inconnue')); }
     else{
       alert('✔ Enregistré');
-      // reset léger en restant sur l’onglet
+      // Reset léger, rester sur l’onglet
       qsa('.control-item',form).forEach(ci=>{
         const okRadio = qsa('input[type="radio"][value="OK"]', ci)[0];
-        if(okRadio){ okRadio.checked=true; }
+        if(okRadio) okRadio.checked=true;
+        updateKoVisibilityForGroup(ci);
         const box=qs('.koDetails',ci);
         if(box){
-          box.classList.add('hidden');
           qsa('input[type="file"]',box).forEach(i=> i.value='');
           const ta=qs('textarea',box); if(ta) ta.value='';
         }
