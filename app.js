@@ -18,34 +18,42 @@ const todayStr = ()=>{
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 };
 function loadScriptOnce(src){
-  return new Promise((resolve,reject)=>{
+  return new Promise((resolve, reject)=>{
     if ([...document.scripts].some(s => s.src && s.src.split('?')[0] === src.split('?')[0])) return resolve();
     const s=document.createElement('script');
-    s.src=src; s.async=true; s.crossOrigin='anonymous';
-    s.onload=()=>resolve(); s.onerror=()=>reject(new Error('Échec chargement: '+src));
+    s.src=src;
+    s.async=true;
+    s.crossOrigin='anonymous';
+    s.onload=()=>resolve();
+    s.onerror=()=>reject(new Error('Échec chargement: '+src));
     document.head.appendChild(s);
   });
 }
 
-/* ====================== AUTO-LOAD LIBS ======================= */
 async function ensureQuagga(){
   if (window.Quagga) return;
-  const v='2.0.0-beta.3';
-  const cdn=`https://cdn.jsdelivr.net/npm/@ericblade/quagga2@${v}/dist/quagga.min.js`;
-  try{
-    await loadScriptOnce(cdn+'?v='+Date.now());
-    if(!window.Quagga) throw new Error('Quagga2 non défini après chargement');
-    console.log('✅ Quagga2 chargé via jsDelivr');
-  }catch(err){
-    console.warn('⚠️ Quagga CDN échoué, essai local');
-    try{
-      await loadScriptOnce('libs/quagga.min.js'); // fallback local optionnel
-    }catch(e){
-      alert("Impossible de charger Quagga2 (CDN et local). Ajoutez libs/quagga.min.js ou vérifiez la connexion.");
-      throw e;
-    }
+
+  // URLs SANS numéro de version pour éviter les 404 à l’avenir
+  const CANDIDATES = [
+    'https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js',
+    'https://unpkg.com/@ericblade/quagga2/dist/quagga.min.js',
+    // votre copie locale (à ajouter dans le repo si besoin) :
+    location.origin + (location.pathname.endsWith('/') ? '' : '/') + 'libs/quagga.min.js'
+  ];
+
+  let lastErr;
+  for (const url of CANDIDATES){
+    try {
+      await loadScriptOnce(url);
+      if (window.Quagga) {
+        console.log('✅ Quagga2 chargé via', url);
+        return;
+      }
+    } catch(e) { lastErr = e; }
   }
+  throw new Error('Quagga introuvable (toutes les sources ont échoué)'+(lastErr?` — ${lastErr.message}`:''));
 }
+
 async function ensureHeic2Any(){
   if(window.heic2any) return;
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
