@@ -4,8 +4,6 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Pelichet — Contrôle Qualité</title>
-
-  <!-- Couleur d’UI navigateur -->
   <meta name="theme-color" content="#ff6a00" />
 
   <!-- PWA -->
@@ -16,13 +14,13 @@
   <!-- Styles -->
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Librairies (chart + zxing + HEIC) -->
+  <!-- Librairies (Chart.js, ZXing, HEIC) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://unpkg.com/@zxing/library@latest"></script>
   <script src="https://unpkg.com/heic2any/dist/heic2any.min.js"></script>
 </head>
 <body>
-  <!-- Appbar / Header -->
+  <!-- Appbar -->
   <header class="appbar">
     <img class="logo" src="icon-180.png" alt="Pelichet" />
     <h1>Pelichet — Contrôle Qualité</h1>
@@ -39,81 +37,96 @@
   </nav>
 
   <main class="wrap grid">
-    <!-- ========== CARTONS ========== -->
+    <!-- ================= CARTONS ================= -->
     <section id="tabCartons" class="tabContent active">
       <div class="card grid">
-        <h2>Contrôle des Cartons</h2>
+        <h2>Contrôle — Cartons</h2>
+
         <form id="formCartons" class="qcForm grid" data-type="Cartons" autocomplete="off">
-          <div class="row">
-            <label>Date</label>
-            <input type="date" name="date_saisie" required />
-          </div>
-
-          <div class="row">
-            <label>Code-barres</label>
-            <div class="hstack">
-              <input id="cartons_code" name="code_barres" type="text" inputmode="numeric" required />
-              <button type="button" class="btn" data-scan="cartons_code">📷 Scanner</button>
+          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+            <div class="row">
+              <label>Date du contrôle</label>
+              <input type="date" name="date_saisie" required />
             </div>
-            <small>ou</small>
-            <input type="file" class="barcode-photo" data-target="cartons_code" accept="image/*" capture="environment" />
+            <div class="row">
+              <label>Photo principale (carton)</label>
+              <input type="file" name="photo_principale" accept="image/*" capture="environment" />
+            </div>
           </div>
 
-          <div class="row">
-            <label>Photo principale</label>
-            <input type="file" name="photo_principale" accept="image/*" capture="environment" />
+          <div class="decode-box grid">
+            <label>Décoder un code-barres (photo)</label>
+            <div class="decode-actions">
+              <label class="btn primary btn-icon">
+                📷 Prendre photo
+                <input type="file" class="barcode-photo" data-target="cartons_code" accept="image/*" capture="environment" hidden>
+              </label>
+              <label class="btn gray btn-icon">
+                🖼️ Galerie
+                <input type="file" class="barcode-photo" data-target="cartons_code" accept="image/*" hidden>
+              </label>
+              <button type="button" class="btn" data-scan="cartons_code">🎯 Décoder (caméra)</button>
+            </div>
+            <input type="text" id="cartons_code" name="code_barres" placeholder="Code-barres" />
           </div>
 
-          <div class="grid">
-            <div class="qblock">
-              <label>Callage papier correct ?</label>
-              <select name="callage_papier">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+          <div class="controls-card grid">
+            <h3 style="margin:0 0 6px">Contrôles</h3>
+
+            <div class="control-item">
+              <p class="question">Le callage papier est-il correct ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="callage_papier" value="OK" checked> OK</label>
+                <label><input type="radio" name="callage_papier" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="callage_papier_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="callage_papier_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Intercalaires présents ?</label>
-              <select name="intercalaires_livres">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">Y a-t-il des intercalaires pour séparer les colonnes de livres ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="intercalaires_livres" value="OK" checked> OK</label>
+                <label><input type="radio" name="intercalaires_livres" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="intercalaires_livres_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="intercalaires_livres_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Ordre & disposition respectés ?</label>
-              <select name="ordre_colonnes">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">L’ordre des colonnes et la disposition sont-ils respectés ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="ordre_colonnes" value="OK" checked> OK</label>
+                <label><input type="radio" name="ordre_colonnes" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="ordre_colonnes_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="ordre_colonnes_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Scotch bien appliqué ?</label>
-              <select name="scotch">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">Le scotch est-il bien appliqué ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="scotch" value="OK" checked> OK</label>
+                <label><input type="radio" name="scotch" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="scotch_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="scotch_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Livres dépoussiérés ?</label>
-              <select name="depoussierage">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">Les livres ont-ils bien été dépoussiérés ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="depoussierage" value="OK" checked> OK</label>
+                <label><input type="radio" name="depoussierage" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="depoussierage_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="depoussierage_commentaire" placeholder="Décrire le problème"></textarea>
@@ -126,84 +139,91 @@
       </div>
     </section>
 
-    <!-- ========== PALETTES AVANT ========== -->
+    <!-- ================= PALETTES AVANT ================= -->
     <section id="tabPA" class="tabContent">
       <div class="card grid">
-        <h2>Palettes (Avant camion)</h2>
+        <h2>Contrôle — Palettes (Avant)</h2>
+
         <form id="formPA" class="qcForm grid" data-type="Palettes_Avant" autocomplete="off">
-          <div class="row">
-            <label>Date</label>
-            <input type="date" name="date_saisie" required />
+          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+            <div class="row"><label>Date du contrôle</label><input type="date" name="date_saisie" required /></div>
+            <div class="row"><label>Photo principale (palette)</label><input type="file" name="photo_principale" accept="image/*" capture="environment" /></div>
           </div>
 
-          <div class="row">
-            <label>Code-barres palette</label>
-            <div class="hstack">
-              <input id="pa_code" name="code_barres" type="text" required />
-              <button type="button" class="btn" data-scan="pa_code">📷 Scanner</button>
+          <div class="decode-box grid">
+            <label>Décoder un code-barres palette (photo)</label>
+            <div class="decode-actions">
+              <label class="btn primary btn-icon">📷 Prendre photo
+                <input type="file" class="barcode-photo" data-target="pa_code" accept="image/*" capture="environment" hidden>
+              </label>
+              <label class="btn gray btn-icon">🖼️ Galerie
+                <input type="file" class="barcode-photo" data-target="pa_code" accept="image/*" hidden>
+              </label>
+              <button type="button" class="btn" data-scan="pa_code">🎯 Décoder (caméra)</button>
             </div>
-            <small>ou</small>
-            <input type="file" class="barcode-photo" data-target="pa_code" accept="image/*" capture="environment" />
+            <input type="text" id="pa_code" name="code_barres" placeholder="Code-barres palette" />
           </div>
 
-          <div class="row">
-            <label>Photo principale</label>
-            <input type="file" name="photo_principale" accept="image/*" capture="environment" />
-          </div>
+          <div class="controls-card grid">
+            <h3 style="margin:0 0 6px">Contrôles</h3>
 
-          <div class="grid">
-            <div class="qblock">
-              <label>Cartons en bon état ?</label>
-              <select name="cartons_etat">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">Les cartons sont-ils en bon état ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="cartons_etat" value="OK" checked> OK</label>
+                <label><input type="radio" name="cartons_etat" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="cartons_etat_photos" accept="image/*" capture="environment" multiple />
-                <textarea name="cartons_etat_commentaire"></textarea>
+                <textarea name="cartons_etat_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Intercalaires présents ?</label>
-              <select name="intercalaires_cartons">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">Y a-t-il des intercalaires pour séparer les cartons ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="intercalaires_cartons" value="OK" checked> OK</label>
+                <label><input type="radio" name="intercalaires_cartons" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="intercalaires_cartons_photos" accept="image/*" capture="environment" multiple />
-                <textarea name="intercalaires_cartons_commentaire"></textarea>
+                <textarea name="intercalaires_cartons_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Ordre des cartons respecté ?</label>
-              <select name="ordre_cartons">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">L’ordre des cartons et la disposition sont-ils respectés ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="ordre_cartons" value="OK" checked> OK</label>
+                <label><input type="radio" name="ordre_cartons" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="ordre_cartons_photos" accept="image/*" capture="environment" multiple />
-                <textarea name="ordre_cartons_commentaire"></textarea>
+                <textarea name="ordre_cartons_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Cerclage bien appliqué ?</label>
-              <select name="cerclage">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">Le cerclage est-il bien appliqué ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="cerclage" value="OK" checked> OK</label>
+                <label><input type="radio" name="cerclage" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="cerclage_photos" accept="image/*" capture="environment" multiple />
-                <textarea name="cerclage_commentaire"></textarea>
+                <textarea name="cerclage_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Palette stable ?</label>
-              <select name="stabilite">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">La palette est-elle stable ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="stabilite" value="OK" checked> OK</label>
+                <label><input type="radio" name="stabilite" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="stabilite_photos" accept="image/*" capture="environment" multiple />
-                <textarea name="stabilite_commentaire"></textarea>
+                <textarea name="stabilite_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
           </div>
@@ -213,51 +233,55 @@
       </div>
     </section>
 
-    <!-- ========== PALETTES DESTINATION ========== -->
+    <!-- ================= PALETTES DESTINATION ================= -->
     <section id="tabPD" class="tabContent">
       <div class="card grid">
-        <h2>Palettes (Destination)</h2>
+        <h2>Contrôle — Palettes (Destination)</h2>
+
         <form id="formPD" class="qcForm grid" data-type="Palettes_Destination" autocomplete="off">
-          <div class="row">
-            <label>Date</label>
-            <input type="date" name="date_saisie" required />
+          <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+            <div class="row"><label>Date du contrôle</label><input type="date" name="date_saisie" required /></div>
+            <div class="row"><label>Photo principale (palette)</label><input type="file" name="photo_principale" accept="image/*" capture="environment" /></div>
           </div>
 
-          <div class="row">
-            <label>Code-barres palette</label>
-            <div class="hstack">
-              <input id="pd_code" name="code_barres" type="text" required />
-              <button type="button" class="btn" data-scan="pd_code">📷 Scanner</button>
+          <div class="decode-box grid">
+            <label>Décoder un code-barres palette (photo)</label>
+            <div class="decode-actions">
+              <label class="btn primary btn-icon">📷 Prendre photo
+                <input type="file" class="barcode-photo" data-target="pd_code" accept="image/*" capture="environment" hidden>
+              </label>
+              <label class="btn gray btn-icon">🖼️ Galerie
+                <input type="file" class="barcode-photo" data-target="pd_code" accept="image/*" hidden>
+              </label>
+              <button type="button" class="btn" data-scan="pd_code">🎯 Décoder (caméra)</button>
             </div>
-            <small>ou</small>
-            <input type="file" class="barcode-photo" data-target="pd_code" accept="image/*" capture="environment" />
+            <input type="text" id="pd_code" name="code_barres" placeholder="Code-barres palette" />
           </div>
 
-          <div class="row">
-            <label>Photo principale</label>
-            <input type="file" name="photo_principale" accept="image/*" capture="environment" />
-          </div>
+          <div class="controls-card grid">
+            <h3 style="margin:0 0 6px">Contrôles</h3>
 
-          <div class="grid">
-            <div class="qblock">
-              <label>Cartons en bon état ?</label>
-              <select name="cartons_etat">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">Les cartons sont-ils en bon état ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="cartons_etat" value="OK" checked> OK</label>
+                <label><input type="radio" name="cartons_etat" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="cartons_etat_photos" accept="image/*" capture="environment" multiple />
-                <textarea name="cartons_etat_commentaire"></textarea>
+                <textarea name="cartons_etat_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
 
-            <div class="qblock">
-              <label>Cerclage bien appliqué ?</label>
-              <select name="cerclage">
-                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
-              </select>
+            <div class="control-item">
+              <p class="question">Le cerclage est-il bien appliqué ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="cerclage" value="OK" checked> OK</label>
+                <label><input type="radio" name="cerclage" value="KO"> KO</label>
+              </div>
               <div class="koDetails hidden grid">
                 <input type="file" name="cerclage_photos" accept="image/*" capture="environment" multiple />
-                <textarea name="cerclage_commentaire"></textarea>
+                <textarea name="cerclage_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
           </div>
@@ -267,12 +291,15 @@
       </div>
     </section>
 
-    <!-- ========== KPI ========== -->
+    <!-- ================= KPI ================= -->
     <section id="tabKPI" class="tabContent">
       <div class="card grid">
         <h2>Tableau de bord KPI</h2>
         <div class="hstack">
           <button id="btnKpiRefresh" class="btn">🔄 Rafraîchir</button>
+          <span class="spacer"></span>
+          <button id="btnExportCsv" class="btn gray">⬇️ Export CSV</button>
+          <button id="btnExportXlsx" class="btn primary">⬇️ Export XLSX</button>
         </div>
         <div id="kpiResults" class="kpi">—</div>
       </div>
@@ -280,7 +307,7 @@
   </main>
 
   <!-- MODAL SCANNER -->
-  <div id="scannerModal" class="scanner-modal" aria-hidden="true" style="display:none">
+  <div id="scannerModal" class="scanner-modal" style="display:none" aria-hidden="true">
     <div class="scanner-box">
       <h3>Scanner le code-barres</h3>
       <video id="scannerVideo" playsinline autoplay muted></video>
@@ -293,27 +320,18 @@
     </div>
   </div>
 
-  <!-- LOADER GLOBAL (avec barre indéterminée) -->
+  <!-- LOADER GLOBAL -->
   <div id="globalLoader" style="display:none">
     <div class="box">
       <div class="spin"></div>
       <div id="loaderMsg">Traitement en cours…</div>
-      <div style="margin-top:10px;background:#333;border-radius:8px;height:10px;overflow:hidden">
-        <div id="loaderBar" style="width:40%;height:100%;background:#ff6a00;animation:loader-move 1.1s linear infinite"></div>
-      </div>
+      <div class="progress-wrap"><div class="progress-bar" id="loaderBar"></div></div>
     </div>
   </div>
-  <style>
-    @keyframes loader-move {
-      0% { transform: translateX(-120%); }
-      100% { transform: translateX(220%); }
-    }
-  </style>
 
   <!-- App -->
   <script src="app.js"></script>
   <script>
-    // Enregistrer le service worker PWA
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
     }
