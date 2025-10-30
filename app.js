@@ -33,24 +33,22 @@ function loadScriptOnce(src){
 }
 
 // Essaye plusieurs CDNs + versioning pour casser le cache (PWA/service worker/iOS).
-async function ensureQuagga(){
+async function ensureQuagga() {
   if (window.Quagga) return;
-  const v = '1.2.6';
-  const bust = `v=${Date.now()}`;
-  const CDNS = [
-    `https://cdn.jsdelivr.net/npm/quagga@${v}/dist/quagga.min.js?${bust}`,
-    `https://unpkg.com/quagga@${v}/dist/quagga.min.js?${bust}`,
-    `https://cdnjs.cloudflare.com/ajax/libs/quagga/${v}/quagga.min.js?${bust}`,
-  ];
-  let lastErr;
-  for (const url of CDNS){
-    try{
-      await loadScriptOnce(url);
-      if (window.Quagga) return; // UMD global attendu: window.Quagga
-    }catch(e){ lastErr = e; }
+
+  const v = '2.0.0-beta.3';
+  const cdn = `https://cdn.jsdelivr.net/npm/@ericblade/quagga2@${v}/dist/quagga.min.js`;
+
+  try {
+    await loadScriptOnce(cdn + '?v=' + Date.now());
+    if (!window.Quagga) throw new Error('Quagga non défini après chargement.');
+    console.log('✅ Quagga2 chargé depuis jsDelivr');
+  } catch (err) {
+    console.error('❌ Échec chargement Quagga2 :', err);
+    alert("Impossible de charger Quagga2. Vérifiez votre connexion Internet ou le CDN jsDelivr.");
   }
-  throw new Error('Quagga introuvable après tentatives multi-CDN' + (lastErr ? ` — ${lastErr.message}` : ''));
 }
+
 
 async function ensureHeic2Any(){
   if (window.heic2any) return;
