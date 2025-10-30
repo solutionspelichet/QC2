@@ -13,10 +13,10 @@
 
   <link rel="stylesheet" href="style.css" />
 
-  <!-- Librairies -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/quagga@1.2.6/dist/quagga.min.js"></script>
+  <!-- Librairies (optionnel si app.js autoload ; recommandé pour éviter les erreurs de chargement) -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/quagga@1.2.6/dist/quagga.min.js" defer></script>
 </head>
 
 <body>
@@ -24,7 +24,7 @@
     <img class="logo" src="icon-180.png" alt="Pelichet" />
     <h1>Pelichet — Contrôle Qualité</h1>
     <div class="spacer"></div>
-    <button id="themeToggle" class="icon-btn">🌓</button>
+    <button id="themeToggle" class="icon-btn" title="Clair / Sombre">🌓</button>
   </header>
 
   <nav class="tabs">
@@ -35,14 +35,17 @@
   </nav>
 
   <main class="wrap grid">
-    <!-- Onglet Cartons -->
+    <!-- ============ CARTONS ============ -->
     <section id="tabCartons" class="tabContent active">
       <div class="card grid">
         <h2>Contrôle des Cartons</h2>
         <form id="formCartons" class="qcForm grid" data-type="Cartons">
-          <label>Date<input type="date" name="date_saisie" required /></label>
+          <label>Date
+            <input type="date" name="date_saisie" required />
+          </label>
+
           <div class="decode-box grid">
-            <label>Code-barres</label>
+            <label>Code-barres carton</label>
             <div class="decode-actions">
               <label class="btn primary">📷 Prendre photo
                 <input type="file" class="barcode-photo" data-target="cartons_code" accept="image/*" capture="environment" hidden>
@@ -52,15 +55,19 @@
               </label>
               <button type="button" class="btn" data-scan="cartons_code">🎯 Décoder (caméra)</button>
             </div>
-            <input id="cartons_code" name="code_barres" placeholder="Code-barres">
+            <input id="cartons_code" name="code_barres" placeholder="Code-barres" />
           </div>
 
-          <label>Photo principale<input type="file" name="photo_principale" accept="image/*" capture="environment" /></label>
+          <label>Photo principale
+            <input type="file" name="photo_principale" accept="image/*" capture="environment" />
+          </label>
 
           <div class="controls-card grid">
             <h3>Contrôles</h3>
+
+            <!-- 4.1 Callage papier -->
             <div class="control-item">
-              <p class="question">Callage papier correct ?</p>
+              <p class="question">Le callage papier est-il correct ?</p>
               <div class="radio-pills">
                 <label><input type="radio" name="callage_papier" value="OK" checked> OK</label>
                 <label><input type="radio" name="callage_papier" value="KO"> KO</label>
@@ -70,18 +77,74 @@
                 <textarea name="callage_papier_commentaire" placeholder="Décrire le problème"></textarea>
               </div>
             </div>
+
+            <!-- 4.2 Intercalaires colonnes -->
+            <div class="control-item">
+              <p class="question">Y a-t-il des intercalaires pour séparer les colonnes de livres ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="intercalaires_colonnes" value="OK" checked> OK</label>
+                <label><input type="radio" name="intercalaires_colonnes" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="intercalaires_colonnes_photos" accept="image/*" multiple />
+                <textarea name="intercalaires_colonnes_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+
+            <!-- 4.3 Ordre/disposition colonnes -->
+            <div class="control-item">
+              <p class="question">L’ordre des colonnes et la disposition sont-ils respectés ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="ordre_colonnes" value="OK" checked> OK</label>
+                <label><input type="radio" name="ordre_colonnes" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="ordre_colonnes_photos" accept="image/*" multiple />
+                <textarea name="ordre_colonnes_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+
+            <!-- 4.4 Scotch -->
+            <div class="control-item">
+              <p class="question">Le scotch est-il bien appliqué ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="scotch" value="OK" checked> OK</label>
+                <label><input type="radio" name="scotch" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="scotch_photos" accept="image/*" multiple />
+                <textarea name="scotch_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+
+            <!-- 4.5 Dépoussiérage -->
+            <div class="control-item">
+              <p class="question">Les livres ont-ils bien été dépoussiérés ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="depoussierage" value="OK" checked> OK</label>
+                <label><input type="radio" name="depoussierage" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="depoussierage_photos" accept="image/*" multiple />
+                <textarea name="depoussierage_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
           </div>
+
           <button type="submit" class="btn primary">📤 Envoyer</button>
         </form>
       </div>
     </section>
 
-    <!-- Palettes Avant -->
+    <!-- ============ PALETTES AVANT ============ -->
     <section id="tabPA" class="tabContent">
       <div class="card grid">
         <h2>Palettes Avant camion</h2>
         <form id="formPA" class="qcForm grid" data-type="Palettes_Avant">
-          <label>Date<input type="date" name="date_saisie" required /></label>
+          <label>Date
+            <input type="date" name="date_saisie" required />
+          </label>
+
           <div class="decode-box grid">
             <label>Code-barres palette</label>
             <div class="decode-actions">
@@ -93,20 +156,96 @@
               </label>
               <button type="button" class="btn" data-scan="pa_code">🎯 Décoder (caméra)</button>
             </div>
-            <input id="pa_code" name="code_barres" placeholder="Code-barres">
+            <input id="pa_code" name="code_barres" placeholder="Code-barres" />
           </div>
-          <label>Photo principale<input type="file" name="photo_principale" accept="image/*" capture="environment" /></label>
+
+          <label>Photo principale
+            <input type="file" name="photo_principale" accept="image/*" capture="environment" />
+          </label>
+
+          <div class="controls-card grid">
+            <h3>Contrôles</h3>
+
+            <!-- 4.1 Cartons en bon état -->
+            <div class="control-item">
+              <p class="question">Les cartons sont-ils en bon état ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="cartons_bon_etat" value="OK" checked> OK</label>
+                <label><input type="radio" name="cartons_bon_etat" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="cartons_bon_etat_photos" accept="image/*" multiple />
+                <textarea name="cartons_bon_etat_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+
+            <!-- 4.2 Intercalaires cartons -->
+            <div class="control-item">
+              <p class="question">Y a-t-il des intercalaires pour séparer les cartons ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="intercalaires_cartons" value="OK" checked> OK</label>
+                <label><input type="radio" name="intercalaires_cartons" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="intercalaires_cartons_photos" accept="image/*" multiple />
+                <textarea name="intercalaires_cartons_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+
+            <!-- 4.3 Ordre/disposition cartons -->
+            <div class="control-item">
+              <p class="question">L’ordre des cartons et la disposition sont-ils respectés ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="ordre_cartons" value="OK" checked> OK</label>
+                <label><input type="radio" name="ordre_cartons" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="ordre_cartons_photos" accept="image/*" multiple />
+                <textarea name="ordre_cartons_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+
+            <!-- 4.4 Cerclage -->
+            <div class="control-item">
+              <p class="question">Le cerclage est-il bien appliqué ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="cerclage" value="OK" checked> OK</label>
+                <label><input type="radio" name="cerclage" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="cerclage_photos" accept="image/*" multiple />
+                <textarea name="cerclage_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+
+            <!-- 4.5 Stabilité -->
+            <div class="control-item">
+              <p class="question">La palette est-elle stable ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="palette_stable" value="OK" checked> OK</label>
+                <label><input type="radio" name="palette_stable" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="palette_stable_photos" accept="image/*" multiple />
+                <textarea name="palette_stable_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+          </div>
+
           <button type="submit" class="btn primary">📤 Envoyer</button>
         </form>
       </div>
     </section>
 
-    <!-- Palettes Destination -->
+    <!-- ============ PALETTES DESTINATION ============ -->
     <section id="tabPD" class="tabContent">
       <div class="card grid">
         <h2>Palettes Destination</h2>
         <form id="formPD" class="qcForm grid" data-type="Palettes_Destination">
-          <label>Date<input type="date" name="date_saisie" required /></label>
+          <label>Date
+            <input type="date" name="date_saisie" required />
+          </label>
+
           <div class="decode-box grid">
             <label>Code-barres palette</label>
             <div class="decode-actions">
@@ -118,15 +257,49 @@
               </label>
               <button type="button" class="btn" data-scan="pd_code">🎯 Décoder (caméra)</button>
             </div>
-            <input id="pd_code" name="code_barres" placeholder="Code-barres">
+            <input id="pd_code" name="code_barres" placeholder="Code-barres" />
           </div>
-          <label>Photo principale<input type="file" name="photo_principale" accept="image/*" capture="environment" /></label>
+
+          <label>Photo principale
+            <input type="file" name="photo_principale" accept="image/*" capture="environment" />
+          </label>
+
+          <div class="controls-card grid">
+            <h3>Contrôles</h3>
+
+            <!-- 4.1 Cartons en bon état -->
+            <div class="control-item">
+              <p class="question">Les cartons sont-ils en bon état ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="cartons_bon_etat_dest" value="OK" checked> OK</label>
+                <label><input type="radio" name="cartons_bon_etat_dest" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="cartons_bon_etat_dest_photos" accept="image/*" multiple />
+                <textarea name="cartons_bon_etat_dest_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+
+            <!-- 4.2 Cerclage -->
+            <div class="control-item">
+              <p class="question">Le cerclage est-il bien appliqué ?</p>
+              <div class="radio-pills">
+                <label><input type="radio" name="cerclage_dest" value="OK" checked> OK</label>
+                <label><input type="radio" name="cerclage_dest" value="KO"> KO</label>
+              </div>
+              <div class="koDetails hidden grid">
+                <input type="file" name="cerclage_dest_photos" accept="image/*" multiple />
+                <textarea name="cerclage_dest_commentaire" placeholder="Décrire le problème"></textarea>
+              </div>
+            </div>
+          </div>
+
           <button type="submit" class="btn primary">📤 Envoyer</button>
         </form>
       </div>
     </section>
 
-    <!-- KPI -->
+    <!-- ============ KPI ============ -->
     <section id="tabKPI" class="tabContent">
       <div class="card grid">
         <h2>Tableau de bord KPI</h2>
@@ -154,7 +327,7 @@
     </div>
   </div>
 
-  <!-- Loader -->
+  <!-- Loader global -->
   <div id="globalLoader" style="display:none">
     <div class="box">
       <div class="spin"></div>
@@ -164,8 +337,8 @@
       </div>
     </div>
   </div>
-<script src="https://cdn.jsdelivr.net/npm/quagga@1.2.6/dist/quagga.min.js" defer></script>
-<script src="app.js" defer></script>
 
+  <!-- App -->
+  <script src="app.js"></script>
 </body>
 </html>
