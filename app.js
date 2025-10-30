@@ -66,138 +66,216 @@ function hideLoader(){ const M=qs('#globalLoader'); if(!M)return; _loader=Math.m
 /* ===================================================================== */
 /* ============================ SCANNER ================================= */
 /* ===================================================================== */
-const hasBarcodeDetector = typeof window.BarcodeDetector==='function';
-let ZX_READER=null;
-function getZXReader(){
-  if(!ZX_READER){
-    if(window.ZXingBrowser&&ZXingBrowser.BrowserMultiFormatReader) ZX_READER=new ZXingBrowser.BrowserMultiFormatReader();
-    else if(window.ZXing&&ZXing.BrowserMultiFormatReader) ZX_READER=new ZXing.BrowserMultiFormatReader();
-  }
-  return ZX_READER;
-}
-function setZXHints_(reader){
-  const NS=(window.ZXingBrowser||window.ZXing);
-  if(reader&&reader.setHints&&NS&&NS.DecodeHintType&&NS.BarcodeFormat){
-    const hints=new Map();
-    hints.set(NS.DecodeHintType.POSSIBLE_FORMATS,[NS.BarcodeFormat.EAN_13,NS.BarcodeFormat.CODE_128,NS.BarcodeFormat.CODE_39]);
-    reader.setHints(hints);
-  }
-}
-let BD=null;
-async function getBarcodeDetector(){
-  if(!hasBarcodeDetector) return null;
-  if(!BD){
-    try{BD=new BarcodeDetector({formats:['ean_13','code_128','code_39']});}
-    catch{ try{BD=new BarcodeDetector({formats:['ean13','code128','code39']});}catch{BD=null;} }
-  }
-  return BD;
-}
-
-let SCAN={stream:null,target:null,running:false,raf:0};
-function openScannerFor(id){SCAN.target=id;qs('#scannerModal').style.display='grid';}
-async function startScanner(){
-  try{
-    const v=qs('#scannerVideo');v.setAttribute('playsinline','true');v.muted=true;
-    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:720}},audio:false});
-    SCAN.stream=st;v.srcObject=st;await v.play();SCAN.running=true;
-    const bd=await getBarcodeDetector();
-    const canvas=document.createElement('canvas');const ctx=canvas.getContext('2d',{alpha:false,desynchronized:true});
-    const step=async()=>{
-      if(!SCAN.running) return;
-      const w=v.videoWidth||640,h=v.videoHeight||480;
-      if(w<2||h<2){ SCAN.raf=requestAnimationFrame(step); return; }
-      canvas.width=w;canvas.height=h;ctx.drawImage(v,0,0,w,h);
-      try{
-        if(bd){
-          const codes=await bd.detect(canvas);
-          if(codes&&codes.length){ document.getElementById(SCAN.target).value=(codes[0].rawValue||'').trim(); closeScanner(); return; }
-        }else{
-          const reader=getZXReader(); setZXHints_(reader);
-          try{
-            const res=await reader.decodeFromCanvas(canvas);
-            const txt=(res && (res.text || (res.getText&&res.getText())))?.trim();
-            if(txt){ document.getElementById(SCAN.target).value=txt; closeScanner(); return; }
-          }catch(_){}
-        }
-      }catch(_){}
-      SCAN.raf=requestAnimationFrame(step);
-    };
-    step();
-  }catch{
-    alert("Caméra non accessible. Utilisez l’upload photo pour décoder.");
-    stopScanner();
-    const inputFile=qsa('input.barcode-photo').find(i=>i.getAttribute('data-target')===SCAN.target);
-    if(inputFile) inputFile.click();
-  }
-}
-function stopScanner(){SCAN.running=false;if(SCAN.raf)cancelAnimationFrame(SCAN.raf);if(SCAN.stream){SCAN.stream.getTracks().forEach(t=>{try{t.stop()}catch{}});SCAN.stream=null;}}
-function closeScanner(){stopScanner();qs('#scannerModal').style.display='none';}
-qs('#scannerStart')?.addEventListener('click',startScanner);
-qs('#scannerStop')?.addEventListener('click',stopScanner);
-qs('#scannerClose')?.addEventListener('click',closeScanner);
-on(document,'click','button[data-scan]',(e,btn)=>openScannerFor(btn.getAttribute('data-scan')));
-
 /* ===================================================================== */
-/* ======== DÉCODAGE DEPUIS FICHIER (iPhone HEIC/HEIF → JPEG) ========= */
+/* ======================== BARCODE HELPERS ============================ */
 /* ===================================================================== */
-on(document,'change','input.barcode-photo',async(e,input)=>{await decodeBarcodeFromFile(input,input.getAttribute('data-target'));});
 
-async function decodeBarcodeFromFile(inputEl,targetId){
-  const file=inputEl.files&&inputEl.files[0]; if(!file) return;
-  try{
-    const reader=getZXReader(); setZXHints_(reader);
-    let dataURL = await readFileAsDataURL_(file);
+/** Normalise l’accès aux libs (BarcodeDetector ou ZXing). */
+const Barcode = (()=>{
+  let BD = null;            // BarcodeDetector natif
+  let ZX = null;            // ZXing BrowserMultiFormatReader
+  let ready = false;
 
-    // Conversion HEIC/HEIF → JPEG si possible
-    if(/image\/heic|image\/heif/i.test(file.type)||/\.heic$/i.test(file.name||"")){
-      try{
-        const blob=await heic2any({blob:file,toType:"image/jpeg",quality:0.92});
-        dataURL = await readBlobAsDataURL_(blob);
-      }catch(e){ console.warn('HEIC→JPEG impossible, on tente l’original', e); }
-    }
-
-    const img=await loadImage_(dataURL);
-    const rotations=[0,90,180,270], scales=[1.0,0.85,0.7,0.55];
-    for(const rot of rotations){
-      for(const sc of scales){
-        const c=canvasFromImageNormalize_(img,sc,1600,true,rot);
-        try{
-          const res=await reader.decodeFromCanvas(c);
-          const txt=(res && (res.text || (res.getText&&res.getText())))?.trim();
-          if(txt){ const t=document.getElementById(targetId); if(t) t.value=txt; return; }
-        }catch(_){}
+  async function ensureReady(){
+    if(ready) return;
+    // 1) Natif
+    if (typeof window.BarcodeDetector === 'function') {
+      try {
+        BD = new window.BarcodeDetector({ formats: ['ean_13','code_128','code_39','ean13','code128','code39'] });
+      } catch {
+        // certains Safari utilisent les noms sans underscore
+        try { BD = new window.BarcodeDetector({ formats: ['ean13','code128','code39'] }); } catch {}
       }
     }
-    alert("Aucun code-barres détecté. Essayez une photo nette et bien éclairée.");
+    // 2) ZXing UMD: @zxing/library peut exposer ZXing ou ZXingBrowser selon le CDN
+    const ZXNS = window.ZXingBrowser || window.ZXing || {};
+    const Reader = ZXNS.BrowserMultiFormatReader;
+    if (Reader) {
+      ZX = new Reader();
+      // Hints: restreindre aux formats utiles
+      try {
+        const Hint = ZXNS.DecodeHintType, Format = ZXNS.BarcodeFormat;
+        if (Hint && Format && ZX.setHints) {
+          const hints = new Map();
+          hints.set(Hint.POSSIBLE_FORMATS, [Format.EAN_13, Format.CODE_128, Format.CODE_39]);
+          ZX.setHints(hints);
+        }
+      } catch {}
+    }
+    ready = true;
+  }
+
+  /** Décode un code-barres depuis un canvas. */
+  async function decodeFromCanvas(canvas){
+    await ensureReady();
+    // 1) Natif
+    if (BD && BD.detect) {
+      try {
+        const res = await BD.detect(canvas);
+        if (res && res.length) return (res[0].rawValue || '').trim();
+      } catch {}
+    }
+    // 2) ZXing
+    if (ZX && ZX.decodeFromCanvas) {
+      try {
+        const out = await ZX.decodeFromCanvas(canvas);
+        const text = out && (out.text || (out.getText && out.getText()));
+        if (text) return String(text).trim();
+      } catch {}
+    }
+    throw new Error('Aucun code-barres détecté.');
+  }
+
+  return { ensureReady, decodeFromCanvas };
+})();
+
+/* ===================================================================== */
+/* ============================ SCANNER CAMÉRA ========================= */
+/* ===================================================================== */
+
+let SCAN = { stream:null, target:null, running:false, raf:0 };
+
+function openScannerFor(inputId){
+  SCAN.target = inputId;
+  document.getElementById('scannerModal').style.display = 'grid';
+}
+
+async function startScanner(){
+  try{
+    await Barcode.ensureReady();
+    const video = document.getElementById('scannerVideo');
+    video.setAttribute('playsinline','true'); // iOS
+    video.muted = true;
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } }
+    });
+    SCAN.stream = stream;
+    video.srcObject = stream;
+    await video.play();
+    SCAN.running = true;
+
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { alpha:false, desynchronized:true });
+
+    const loop = async ()=>{
+      if(!SCAN.running) return;
+      const w = video.videoWidth || 640, h = video.videoHeight || 480;
+      if (w < 2 || h < 2){ SCAN.raf = requestAnimationFrame(loop); return; }
+      canvas.width = w; canvas.height = h;
+      ctx.drawImage(video, 0, 0, w, h);
+      try{
+        const value = await Barcode.decodeFromCanvas(canvas);
+        if (value){
+          document.getElementById(SCAN.target).value = value;
+          closeScanner();
+          return;
+        }
+      }catch{} // on continue à scanner
+      SCAN.raf = requestAnimationFrame(loop);
+    };
+    loop();
   }catch(e){
-    alert("Erreur décodage image : " + (e?.message||e));
+    alert("Caméra indisponible. Utilisez l’upload photo pour décoder.");
+    stopScanner();
+    // Fallback: déclencher l'input fichier associé
+    const picker = Array.from(document.querySelectorAll('input.barcode-photo'))
+      .find(i => i.getAttribute('data-target') === SCAN.target);
+    if (picker) picker.click();
   }
 }
-function readFileAsDataURL_(f){return new Promise((ok,ko)=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.onerror=ko;fr.readAsDataURL(f);});}
-function readBlobAsDataURL_(b){return new Promise((ok,ko)=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.onerror=ko;fr.readAsDataURL(b);});}
-function loadImage_(d){return new Promise((ok,ko)=>{const i=new Image();i.onload=()=>ok(i);i.onerror=ko;i.src=d;});}
-function canvasFromImageNormalize_(img,scale,maxDim,boost,rot){
-  const iw=img.naturalWidth||img.width,ih=img.naturalHeight||img.height;
-  const sc=Math.min(1,maxDim/Math.max(iw,ih));
-  const rw=iw*sc*scale, rh=ih*sc*scale;
-  const rad=(rot||0)*Math.PI/180;
-  const c=document.createElement('canvas');
-  const swap=rot===90||rot===270;
-  c.width=Math.max(1,Math.round(swap?rh:rw));
-  c.height=Math.max(1,Math.round(swap?rw:rh));
-  const ctx=c.getContext('2d',{alpha:false,desynchronized:true});
-  ctx.save(); ctx.translate(c.width/2,c.height/2); ctx.rotate(rad); ctx.drawImage(img,-rw/2,-rh/2,rw,rh); ctx.restore();
 
-  if(boost){
-    const id=ctx.getImageData(0,0,c.width,c.height), d=id.data, gamma=0.9, contrast=1.25, mid=128;
+function stopScanner(){
+  SCAN.running = false;
+  if (SCAN.raf) cancelAnimationFrame(SCAN.raf);
+  if (SCAN.stream){
+    try { SCAN.stream.getTracks().forEach(t=>t.stop()); } catch {}
+    SCAN.stream = null;
+  }
+}
+function closeScanner(){ stopScanner(); document.getElementById('scannerModal').style.display = 'none'; }
+
+document.getElementById('scannerStart')?.addEventListener('click', startScanner);
+document.getElementById('scannerStop')?.addEventListener('click', stopScanner);
+document.getElementById('scannerClose')?.addEventListener('click', closeScanner);
+on(document,'click','button[data-scan]',(e,btn)=> openScannerFor(btn.getAttribute('data-scan')));
+
+/* ===================================================================== */
+/* ===================== DÉCODAGE DEPUIS FICHIER ====================== */
+/* ===================================================================== */
+
+on(document,'change','input.barcode-photo', async (e,input)=>{
+  const targetId = input.getAttribute('data-target');
+  try{
+    const code = await decodeBarcodeFromFile(input.files?.[0]);
+    if (code) document.getElementById(targetId).value = code;
+  }catch(err){
+    alert(err.message||'Décodage impossible');
+  }finally{
+    // reset pour permettre un re-upload du même fichier
+    input.value = '';
+  }
+});
+
+async function decodeBarcodeFromFile(file){
+  if(!file) throw new Error('Aucun fichier');
+  await Barcode.ensureReady();
+
+  // Lire en DataURL (robuste iOS)
+  let dataURL = await readAsDataURL(file);
+
+  // iPhone / HEIC → JPEG
+  if (/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||"")){
+    try{
+      const blob = await heic2any({ blob:file, toType:'image/jpeg', quality:0.92 });
+      dataURL = await readAsDataURL(blob);
+    }catch(e){ /* on garde l'original si conversion échoue */ }
+  }
+
+  const img = await loadImage(dataURL);
+
+  // multi-rotations + multi-échelles ⇒ bien pour photos inclinées
+  const rotations = [0,90,180,270];
+  const scales    = [1.0,0.85,0.7,0.55];
+  for (const rot of rotations){
+    for (const sc of scales){
+      const canvas = normalizeToCanvas(img, sc, 1600, true, rot);
+      try{
+        const code = await Barcode.decodeFromCanvas(canvas);
+        if (code) return code;
+      }catch{}
+    }
+  }
+  throw new Error("Aucun code-barres détecté. Reprendre une photo nette et bien éclairée.");
+}
+
+/* === utilitaires image === */
+function readAsDataURL(blobOrFile){
+  return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(blobOrFile); });
+}
+function loadImage(dataURL){
+  return new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=dataURL; });
+}
+function normalizeToCanvas(img, scale, maxDim, boostContrast, rotateDeg){
+  const iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+  const base = Math.min(1, maxDim / Math.max(iw, ih));
+  const rw = Math.max(8, Math.round(iw * base * scale));
+  const rh = Math.max(8, Math.round(ih * base * scale));
+  const rot = (rotateDeg||0)%360, rad = rot*Math.PI/180;
+  const swap = (rot===90||rot===270);
+  const cw = swap ? rh : rw, ch = swap ? rw : rh;
+
+  const c=document.createElement('canvas'); c.width=cw; c.height=ch;
+  const ctx=c.getContext('2d',{alpha:false,desynchronized:true});
+  ctx.save(); ctx.translate(cw/2,ch/2); ctx.rotate(rad); ctx.drawImage(img,-rw/2,-rh/2,rw,rh); ctx.restore();
+
+  if(boostContrast){
+    const id=ctx.getImageData(0,0,cw,ch), d=id.data, gamma=0.9, contrast=1.25, mid=128;
     for(let i=0;i<d.length;i+=4){
       let r=d[i], g=d[i+1], b=d[i+2];
-      r=255*Math.pow(r/255,gamma);
-      g=255*Math.pow(g/255,gamma);
-      b=255*Math.pow(b/255,gamma);
-      r=(r-mid)*contrast+mid;
-      g=(g-mid)*contrast+mid;
-      b=(b-mid)*contrast+mid;
+      r=255*Math.pow(r/255,gamma); g=255*Math.pow(g/255,gamma); b=255*Math.pow(b/255,gamma);
+      r=(r-mid)*contrast+mid; g=(g-mid)*contrast+mid; b=(b-mid)*contrast+mid;
       d[i]=Math.min(255,Math.max(0,r));
       d[i+1]=Math.min(255,Math.max(0,g));
       d[i+2]=Math.min(255,Math.max(0,b));
@@ -206,6 +284,7 @@ function canvasFromImageNormalize_(img,scale,maxDim,boost,rot){
   }
   return c;
 }
+
 
 /* ===================================================================== */
 /* ==================== Compression images ≤600 KB ===================== */
