@@ -31,11 +31,9 @@ function loadScriptOnce(src){
 // Quagga2 optionnel (recommandé en self-host: /libs/quagga.min.js)
 async function ensureQuagga(){
   if (window.Quagga) return;
-  // Essaie self-host local en priorité
   const base = location.origin + location.pathname.replace(/\/[^/]*$/,'/');
   await loadScriptOnce(base + 'libs/quagga.min.js').catch(()=>{}); // silencieux si absent
 }
-
 // ZXing fallback (CDN stables)
 async function ensureZXing(){
   if (window.ZXingBrowser && window.ZXing) return;
@@ -43,7 +41,21 @@ async function ensureZXing(){
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js');
   if (!(window.ZXingBrowser && window.ZXing)) throw new Error('ZXing non chargé');
 }
-
+// Native barcode
+function isBarcodeDetectorSupported(){
+  return 'BarcodeDetector' in window;
+}
+async function ensureBarcodeDetector(){
+  if (!isBarcodeDetectorSupported()) throw new Error('BarcodeDetector non supporté');
+  try{
+    const formats = await window.BarcodeDetector.getSupportedFormats?.();
+    // formats courants: 'ean_13','code_128','code_39','qr_code',...
+    return new window.BarcodeDetector({ formats: ['ean_13','code_128','code_39','qr_code','upc_a','upc_e','ean_8'] });
+  }catch(e){
+    // certains navigateurs supportent BD mais pas getSupportedFormats
+    return new window.BarcodeDetector();
+  }
+}
 async function ensureHeic2Any(){
   if(window.heic2any) return;
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
@@ -137,11 +149,16 @@ function releaseCamera(){
 }
 
 /* ========================= SCAN CAMÉRA ======================== */
-let SCAN={target:null, running:false, _zxingReader:null};
+let SCAN={target:null, running:false, _zxingReader:null, _nativeLoopId:null, _nativeDetector:null};
 function openScannerFor(inputId){
   SCAN.target=inputId;
   qs('#scannerModal').style.display='grid';
 }
+qs('#scannerStart')?.addEventListener('click', startScanner);
+qs('#scannerStop')?.addEventListener('click', stopScanner);
+qs('#scannerClose')?.addEventListener('click', closeScanner);
+on(document,'click','button[data-scan]',(e,btn)=> openScannerFor(btn.getAttribute('data-scan')));
+
 async function startScanner(){
   qs('#scannerModal').style.display='grid';
   const inputId = SCAN.target;
@@ -149,13 +166,28 @@ async function startScanner(){
 
   // 0) Pré-amorçage caméra (aperçu)
   try{
-    await ensureCameraAccess(videoEl); // l’aperçu doit apparaître ici
+    await ensureCameraAccess(videoEl);
   }catch(err){
     alert("Caméra indisponible ou permissions refusées. Réglages → Safari/Chrome → Appareil photo → Autoriser.");
     return;
   }
 
-  // 1) Essai Quagga (si self-host présent)
+  // 1) Niveau 1 — BarcodeDetector natif
+  try{
+    SCAN._nativeDetector = await ensureBarcodeDetector();
+    startNativeLoop(videoEl, (code)=>{
+      if(code){
+        document.getElementById(inputId).value = code;
+        closeScanner();
+      }
+    });
+    SCAN.running = true;
+    return; // ✅ natif OK
+  }catch(e){
+    // pas supporté → on tente Quagga
+  }
+
+  // 2) Niveau 2 — Quagga (self-host)
   try{
     await ensureQuagga();
     if (window.Quagga) {
@@ -179,13 +211,13 @@ async function startScanner(){
           closeScanner();
         }
       });
-      return; // ✅ Quagga opérationnel
+      return; // ✅ Quagga OK
     }
   }catch(e){
     // on tente ZXing ensuite
   }
 
-  // 2) Fallback ZXing (CDN fiables)
+  // 3) Niveau 3 — ZXing (CDN)
   try{
     await ensureZXing();
     try{ Quagga && Quagga.stop(); }catch{}
@@ -205,7 +237,35 @@ async function startScanner(){
     alert("Impossible de démarrer le scan. Utilisez l’upload photo pour décoder.");
   }
 }
+function startNativeLoop(videoEl, onCode){
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const detect = async ()=>{
+    if (!SCAN._nativeDetector) return;
+    const vw = videoEl.videoWidth||1280, vh = videoEl.videoHeight||720;
+    if (vw===0 || vh===0){ SCAN._nativeLoopId = requestAnimationFrame(detect); return; }
+    canvas.width = vw; canvas.height = vh;
+    ctx.drawImage(videoEl, 0, 0, vw, vh);
+    try{
+      // Chrome/Safari acceptent ImageBitmap, mais det.detect(canvas) marche aussi
+      const barcodes = await SCAN._nativeDetector.detect(canvas);
+      if (barcodes && barcodes.length){
+        const code = String(barcodes[0].rawValue||'').trim();
+        if (code){ onCode(code); return; }
+      }
+    }catch{}
+    SCAN._nativeLoopId = requestAnimationFrame(detect);
+  };
+  cancelAnimationFrame(SCAN._nativeLoopId);
+  SCAN._nativeLoopId = requestAnimationFrame(detect);
+}
+function stopNativeLoop(){
+  try{ cancelAnimationFrame(SCAN._nativeLoopId); }catch{}
+  SCAN._nativeLoopId=null; SCAN._nativeDetector=null;
+}
 function stopScanner(){
+  // Natif
+  stopNativeLoop();
   // Quagga
   try{ if (SCAN.running && window.Quagga){ Quagga.stop(); } }catch{}
   // ZXing
@@ -218,10 +278,6 @@ function closeScanner(){
   stopScanner();
   qs('#scannerModal').style.display='none';
 }
-qs('#scannerStart')?.addEventListener('click',startScanner);
-qs('#scannerStop')?.addEventListener('click',stopScanner);
-qs('#scannerClose')?.addEventListener('click',closeScanner);
-on(document,'click','button[data-scan]',(e,btn)=> openScannerFor(btn.getAttribute('data-scan')));
 
 /* ==================== DÉCODAGE VIA FICHIER ==================== */
 on(document,'change','input.barcode-photo',async(e,input)=>{
@@ -240,12 +296,39 @@ async function decodeBarcodeFromImageFile(file){
   if(/image\/heic|image\/heif/i.test(file.type)||/\.heic$/i.test(file.name||'')){
     try{ await ensureHeic2Any(); blob=await heic2any({blob:file,toType:'image/jpeg',quality:0.92}); }catch{}
   }
-  const dataURL=await readAsDataURL(blob);
 
-  // 1) Quagga si disponible
+  // 1) Natif (BarcodeDetector) si dispo
+  if (isBarcodeDetectorSupported()){
+    try{
+      const detector = await ensureBarcodeDetector();
+      const imgBitmap = await createImageBitmap(blob);
+      const off = new OffscreenCanvas ? new OffscreenCanvas(imgBitmap.width, imgBitmap.height) : null;
+      if (off){
+        const ctx = off.getContext('2d');
+        ctx.drawImage(imgBitmap,0,0);
+        const results = await detector.detect(off);
+        if(results && results.length){
+          const code = String(results[0].rawValue||'').trim();
+          if(code) return code;
+        }
+      }else{
+        // fallback canvas DOM
+        const c=document.createElement('canvas'); c.width=imgBitmap.width; c.height=imgBitmap.height;
+        c.getContext('2d').drawImage(imgBitmap,0,0);
+        const results = await detector.detect(c);
+        if(results && results.length){
+          const code = String(results[0].rawValue||'').trim();
+          if(code) return code;
+        }
+      }
+    }catch(e){}
+  }
+
+  // 2) Quagga si disponible
   try{
     await ensureQuagga();
     if(window.Quagga){
+      const dataURL=await readAsDataURL(blob);
       return await new Promise((resolve,reject)=>{
         Quagga.decodeSingle({
           src:dataURL,numOfWorkers:0, inputStream:{size:1600},
@@ -258,7 +341,7 @@ async function decodeBarcodeFromImageFile(file){
     }
   }catch(e){ /* on passe à ZXing */ }
 
-  // 2) ZXing fallback
+  // 3) ZXing fallback
   await ensureZXing();
   const reader = new ZXingBrowser.BrowserMultiFormatReader();
   const blobURL = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
