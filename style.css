@@ -141,3 +141,9 @@ small{color:var(--pel-muted)}
   .grid{gap:14px}
   .btn{padding:.6rem .85rem}
 }
+/* Scanner modal + vidéo visibles et dimensionnés */
+.scanner-modal { position: fixed; inset: 0; display: none; place-items: center; background: rgba(0,0,0,0.6); z-index: 9999; }
+.scanner-box { width: min(600px, 96vw); background: var(--card,#fff); border-radius: 16px; padding: 16px; display: grid; gap: 12px; }
+#scannerVideo { width: 100%; height: auto; min-height: 240px; background: #000; border-radius: 12px; }
+.scanner-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
