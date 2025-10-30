@@ -1,9 +1,9 @@
 /* ========================== CONFIG ========================== */
 var CONFIG = {
   WEBAPP_BASE_URL: "https://script.google.com/macros/s/AKfycbyy826nPPtVW-HpyUSqzhJ-Eoq42_-rXhYHW3WXi3rT9cZ61dW264c7DDnfagnrXjM7/exec",
-  MAX_IMAGE_DIM: 1600,   // redimension long côté
+  MAX_IMAGE_DIM: 1600,   // redimension (plus grand côté)
   MAX_FILE_SIZE_KB: 600, // taille cible après compression
-  QUALITY: 0.85          // qualité JPEG par défaut
+  QUALITY: 0.85          // qualité JPEG
 };
 
 /* ========================== HELPERS ========================== */
@@ -27,22 +27,21 @@ function loadScriptOnce(src){
   });
 }
 
-// Quagga2 optionnel (si tu auto-héberges libs/quagga.min.js)
+/* ====================== AUTO-LOAD LIBS ======================= */
+// Quagga2 optionnel (recommandé en self-host: /libs/quagga.min.js)
 async function ensureQuagga(){
   if (window.Quagga) return;
-  // 👉 soit tu déposes le fichier dans ton repo: /QC2/libs/quagga.min.js
-  // (conseillé, plus de CORS/404)
-  await loadScriptOnce(location.origin + location.pathname.replace(/\/[^/]*$/,'/') + 'libs/quagga.min.js')
-    .catch(()=>{}); // on ignore si absent
+  // Essaie self-host local en priorité
+  const base = location.origin + location.pathname.replace(/\/[^/]*$/,'/');
+  await loadScriptOnce(base + 'libs/quagga.min.js').catch(()=>{}); // silencieux si absent
 }
+
+// ZXing fallback (CDN stables)
 async function ensureZXing(){
   if (window.ZXingBrowser && window.ZXing) return;
-  // Charger d’abord la lib, puis le wrapper browser
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js');
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js');
-  if (!(window.ZXingBrowser && window.ZXing)) {
-    throw new Error('ZXing non chargé');
-  }
+  if (!(window.ZXingBrowser && window.ZXing)) throw new Error('ZXing non chargé');
 }
 
 async function ensureHeic2Any(){
@@ -107,53 +106,89 @@ function hideLoader(){
   if(!_loader) M.style.display='none';
 }
 
+/* ====================== Caméra (aperçu) ======================= */
+let _cameraStream = null;
+async function ensureCameraAccess(videoEl){
+  const constraints = {
+    audio: false,
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1280 },
+      height:{ ideal: 720 }
+    }
+  };
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("getUserMedia indisponible sur ce navigateur.");
+  }
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  _cameraStream = stream;
+  videoEl.srcObject = stream;
+  videoEl.setAttribute('playsinline', 'true'); // iOS
+  await videoEl.play();
+  return stream;
+}
+function releaseCamera(){
+  try{
+    if (_cameraStream) {
+      _cameraStream.getTracks().forEach(t=>t.stop());
+      _cameraStream = null;
+    }
+  }catch{}
+}
+
 /* ========================= SCAN CAMÉRA ======================== */
-let SCAN={target:null, running:false};
+let SCAN={target:null, running:false, _zxingReader:null};
 function openScannerFor(inputId){
   SCAN.target=inputId;
   qs('#scannerModal').style.display='grid';
 }
 async function startScanner(){
-  // Ouvre le modal si pas déjà ouvert
   qs('#scannerModal').style.display='grid';
   const inputId = SCAN.target;
+  const videoEl = qs('#scannerVideo');
 
-  // 1) Tentative Quagga si dispo (self-host)
+  // 0) Pré-amorçage caméra (aperçu)
+  try{
+    await ensureCameraAccess(videoEl); // l’aperçu doit apparaître ici
+  }catch(err){
+    alert("Caméra indisponible ou permissions refusées. Réglages → Safari/Chrome → Appareil photo → Autoriser.");
+    return;
+  }
+
+  // 1) Essai Quagga (si self-host présent)
   try{
     await ensureQuagga();
-    if (window.Quagga){
-      try{ Quagga.stop(); }catch{}
-      const videoEl=qs('#scannerVideo'); videoEl.setAttribute('playsinline','true');
+    if (window.Quagga) {
+      try { Quagga.stop(); } catch {}
       Quagga.init({
-        inputStream:{ type:'LiveStream', target: videoEl, constraints:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} } },
-        decoder:{ readers:['ean_reader','code_128_reader','code_39_reader'] }, locate:true, locator:{halfSample:true,patchSize:'medium'}
+        inputStream:{
+          name:'Live', type:'LiveStream', target: videoEl,
+          constraints:{ facingMode:'environment' }
+        },
+        decoder:{ readers:['ean_reader','code_128_reader','code_39_reader'] },
+        locate:true, locator:{ halfSample:true, patchSize:'medium' }
       }, (err)=>{
-        if(err) throw err;
-        Quagga.start(); SCAN.running=true;
+        if (err) throw err;
+        Quagga.start(); SCAN.running = true;
       });
       Quagga.offDetected?.();
       Quagga.onDetected((res)=>{
-        const code=res?.codeResult?.code ? String(res.codeResult.code).trim() : '';
-        if(code){
-          document.getElementById(inputId).value=code;
+        const code = res?.codeResult?.code ? String(res.codeResult.code).trim() : '';
+        if (code) {
+          document.getElementById(inputId).value = code;
           closeScanner();
         }
       });
-      return; // ✅ Quagga OK
+      return; // ✅ Quagga opérationnel
     }
   }catch(e){
-    // on poursuit en fallback
+    // on tente ZXing ensuite
   }
 
-  // 2) Fallback ZXing (CDN stables)
+  // 2) Fallback ZXing (CDN fiables)
   try{
     await ensureZXing();
-    const videoEl=qs('#scannerVideo'); videoEl.setAttribute('playsinline','true');
-
-    // Arrête Quagga si lancé (sécurité)
     try{ Quagga && Quagga.stop(); }catch{}
-
-    // ZXing reader
     SCAN._zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
     const devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
     const backCam = devices.find(d=>/back|rear|environment/i.test(d.label))?.deviceId || devices[0]?.deviceId;
@@ -164,23 +199,25 @@ async function startScanner(){
         controls.stop();
         closeScanner();
       }
-      // err silencieux tant que pas décodé
     });
     SCAN.running = true;
   }catch(err){
-    alert("Caméra indisponible ou permissions refusées. Vous pouvez charger une photo pour décoder.");
+    alert("Impossible de démarrer le scan. Utilisez l’upload photo pour décoder.");
   }
 }
-
 function stopScanner(){
   // Quagga
   try{ if (SCAN.running && window.Quagga){ Quagga.stop(); } }catch{}
   // ZXing
-  try{ SCAN._zxingReader && SCAN._zxingReader.reset(); }catch{}
-  SCAN.running=false;
+  try{ SCAN._zxingReader && SCAN._zxingReader.reset(); SCAN._zxingReader=null; }catch{}
+  SCAN.running = false;
+  // Caméra
+  releaseCamera();
 }
-function closeScanner(){ stopScanner(); qs('#scannerModal').style.display='none'; }
-
+function closeScanner(){
+  stopScanner();
+  qs('#scannerModal').style.display='none';
+}
 qs('#scannerStart')?.addEventListener('click',startScanner);
 qs('#scannerStop')?.addEventListener('click',stopScanner);
 qs('#scannerClose')?.addEventListener('click',closeScanner);
@@ -205,15 +242,15 @@ async function decodeBarcodeFromImageFile(file){
   }
   const dataURL=await readAsDataURL(blob);
 
-  // 1) Essayer Quagga si disponible
+  // 1) Quagga si disponible
   try{
     await ensureQuagga();
     if(window.Quagga){
       return await new Promise((resolve,reject)=>{
         Quagga.decodeSingle({
-          src:dataURL, numOfWorkers:0, inputStream:{size:1600},
+          src:dataURL,numOfWorkers:0, inputStream:{size:1600},
           decoder:{readers:['ean_reader','code_128_reader','code_39_reader']}, locate:true
-        }, (result)=>{
+        },(result)=>{
           const code=result?.codeResult?.code ? String(result.codeResult.code).trim() : '';
           if(code) resolve(code); else reject(new Error('Quagga: aucun code détecté'));
         });
@@ -221,10 +258,9 @@ async function decodeBarcodeFromImageFile(file){
     }
   }catch(e){ /* on passe à ZXing */ }
 
-  // 2) Fallback ZXing (fiable)
+  // 2) ZXing fallback
   await ensureZXing();
   const reader = new ZXingBrowser.BrowserMultiFormatReader();
-  // ZXing attend un élément <img> ou une URL — on crée un blob URL temporaire
   const blobURL = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
   try{
     const result = await reader.decodeFromImageUrl(blobURL);
@@ -234,7 +270,6 @@ async function decodeBarcodeFromImageFile(file){
     reader.reset();
   }
 }
-
 function readAsDataURL(blobOrFile){
   return new Promise((ok,ko)=>{
     const fr=new FileReader();
@@ -294,6 +329,7 @@ async function buildPayload(form){
 /* ========================= SUBMIT ============================ */
 on(document,'submit','form.qcForm',async(e,form)=>{
   e.preventDefault();
+  // Validation KO
   let ok=true;
   qsa('.control-item',form).forEach(ci=>{
     const checked=qsa('input[type="radio"]',ci).find(r=>r.checked);
@@ -306,6 +342,7 @@ on(document,'submit','form.qcForm',async(e,form)=>{
   });
   if(!ok){alert('Pour chaque KO : photo(s) ET commentaire obligatoires.');return;}
   if(!CONFIG.WEBAPP_BASE_URL){alert('URL backend non configurée.');return;}
+
   const type=form.dataset.type;
   const url=new URL(CONFIG.WEBAPP_BASE_URL);url.searchParams.set('route','qc');url.searchParams.set('type',type);
 
@@ -321,11 +358,12 @@ on(document,'submit','form.qcForm',async(e,form)=>{
     if(!js.ok){alert('Erreur backend: '+(js.error||'inconnue'));}
     else{
       alert('✔ Enregistré');
+      // Reset léger (reste sur l’onglet)
       qsa('.control-item',form).forEach(ci=>{
         const okR=qsa('input[type="radio"][value="OK"]',ci)[0];
         if(okR)okR.checked=true;
         updateKoVisibilityForGroup(ci);
-        const box=qs(' .koDetails',ci);
+        const box=qs('.koDetails',ci);
         if(box){qsa('input[type="file"]',box).forEach(i=>i.value='');const ta=qs('textarea',box);if(ta)ta.value='';}
       });
       const codeEl=qs('input[name="code_barres"]',form);if(codeEl)codeEl.value='';
