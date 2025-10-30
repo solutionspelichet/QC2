@@ -1,9 +1,9 @@
 /* ================= CONFIG ================= */
 var CONFIG = {
   WEBAPP_BASE_URL: "https://script.google.com/macros/s/AKfycbyy826nPPtVW-HpyUSqzhJ-Eoq42_-rXhYHW3WXi3rT9cZ61dW264c7DDnfagnrXjM7/exec",
-  MAX_IMAGE_DIM: 1600,      // redimension long côté
-  MAX_FILE_SIZE_KB: 600,    // taille cible max après compression
-  QUALITY: 0.85             // qualité JPEG par défaut
+  MAX_IMAGE_DIM: 1600,
+  MAX_FILE_SIZE_KB: 600,
+  QUALITY: 0.85
 };
 
 /* ================= Utils ================= */
@@ -13,17 +13,11 @@ function on(el, ev, selOrFn, maybeFn){
   if(typeof selOrFn==='function'){ el.addEventListener(ev, selOrFn); }
   else{ el.addEventListener(ev, e=>{ const t=e.target.closest(selOrFn); if(t) maybeFn(e,t); }); }
 }
-const todayStr = ()=>{
-  const d=new Date(), p=n=>n<10?'0'+n:n;
-  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
-};
+const todayStr = ()=>{ const d=new Date(), p=n=>n<10?'0'+n:n; return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`; };
 
-/* ================= Thème clair/sombre ================= */
-(function(){
-  const t = localStorage.getItem('qc_theme') || 'light';
-  document.documentElement.setAttribute('data-theme', t);
-})();
-qs('#themeToggle')?.addEventListener('click', ()=>{
+/* ================= Thème ================= */
+(function(){const t=localStorage.getItem('qc_theme')||'light';document.documentElement.setAttribute('data-theme',t);})();
+qs('#themeToggle')?.addEventListener('click',()=>{
   const cur=document.documentElement.getAttribute('data-theme');
   const nxt=cur==='dark'?'light':'dark';
   document.documentElement.setAttribute('data-theme',nxt);
@@ -38,10 +32,10 @@ on(document,'click','.tabs .tab',(e,btn)=>{
   if(target==='tabKPI'){ loadAndRenderKPI().catch(()=>{}); }
 });
 
-/* ================= Date par défaut ================= */
+/* ================= Defaults ================= */
 qsa('input[type="date"]').forEach(i=>{ if(!i.value) i.value=todayStr(); });
 
-/* ================= Radios OK/KO ================= */
+/* ================= KO visibility ================= */
 function updateKoVisibilityForGroup(container){
   const radios=qsa('input[type="radio"]',container);
   if(!radios.length) return;
@@ -50,7 +44,7 @@ function updateKoVisibilityForGroup(container){
   const box=qs('.koDetails',container);
   if(box){
     box.classList.toggle('hidden',!isKO);
-    qsa('input[type="file"],textarea',box).forEach(el=>el.required=isKO);
+    qsa('input[type="file"], textarea',box).forEach(el=> el.required=isKO);
   }
 }
 on(document,'change','.control-item input[type="radio"]',(e,radio)=>{
@@ -60,238 +54,128 @@ qsa('.control-item').forEach(updateKoVisibilityForGroup);
 
 /* ================= Loader ================= */
 let _loader=0;
-function showLoader(msg){ const M=qs('#globalLoader'); if(!M)return; qs('#loaderMsg').textContent=msg||'Chargement…'; M.style.display='flex'; _loader++; }
-function hideLoader(){ const M=qs('#globalLoader'); if(!M)return; _loader=Math.max(0,_loader-1); if(!_loader)M.style.display='none'; }
+function showLoader(msg){const M=qs('#globalLoader'); if(!M)return; qs('#loaderMsg').textContent=msg||'Chargement…'; M.style.display='flex'; _loader++;}
+function hideLoader(){const M=qs('#globalLoader'); if(!M)return; _loader=Math.max(0,_loader-1); if(!_loader) M.style.display='none';}
 
 /* ===================================================================== */
-/* ============================ SCANNER ================================= */
-/* ===================================================================== */
-/* ===================================================================== */
-/* ======================== BARCODE HELPERS ============================ */
+/* ============================ QUAGGA 2 =============================== */
 /* ===================================================================== */
 
-/** Normalise l’accès aux libs (BarcodeDetector ou ZXing). */
-const Barcode = (()=>{
-  let BD = null;            // BarcodeDetector natif
-  let ZX = null;            // ZXing BrowserMultiFormatReader
-  let ready = false;
-
-  async function ensureReady(){
-    if(ready) return;
-    // 1) Natif
-    if (typeof window.BarcodeDetector === 'function') {
-      try {
-        BD = new window.BarcodeDetector({ formats: ['ean_13','code_128','code_39','ean13','code128','code39'] });
-      } catch {
-        // certains Safari utilisent les noms sans underscore
-        try { BD = new window.BarcodeDetector({ formats: ['ean13','code128','code39'] }); } catch {}
-      }
-    }
-    // 2) ZXing UMD: @zxing/library peut exposer ZXing ou ZXingBrowser selon le CDN
-    const ZXNS = window.ZXingBrowser || window.ZXing || {};
-    const Reader = ZXNS.BrowserMultiFormatReader;
-    if (Reader) {
-      ZX = new Reader();
-      // Hints: restreindre aux formats utiles
-      try {
-        const Hint = ZXNS.DecodeHintType, Format = ZXNS.BarcodeFormat;
-        if (Hint && Format && ZX.setHints) {
-          const hints = new Map();
-          hints.set(Hint.POSSIBLE_FORMATS, [Format.EAN_13, Format.CODE_128, Format.CODE_39]);
-          ZX.setHints(hints);
-        }
-      } catch {}
-    }
-    ready = true;
-  }
-
-  /** Décode un code-barres depuis un canvas. */
-  async function decodeFromCanvas(canvas){
-    await ensureReady();
-    // 1) Natif
-    if (BD && BD.detect) {
-      try {
-        const res = await BD.detect(canvas);
-        if (res && res.length) return (res[0].rawValue || '').trim();
-      } catch {}
-    }
-    // 2) ZXing
-    if (ZX && ZX.decodeFromCanvas) {
-      try {
-        const out = await ZX.decodeFromCanvas(canvas);
-        const text = out && (out.text || (out.getText && out.getText()));
-        if (text) return String(text).trim();
-      } catch {}
-    }
-    throw new Error('Aucun code-barres détecté.');
-  }
-
-  return { ensureReady, decodeFromCanvas };
-})();
-
-/* ===================================================================== */
-/* ============================ SCANNER CAMÉRA ========================= */
-/* ===================================================================== */
-
-let SCAN = { stream:null, target:null, running:false, raf:0 };
+/* ----- Live scanner (caméra) ----- */
+let SCAN={target:null, running:false};
 
 function openScannerFor(inputId){
-  SCAN.target = inputId;
-  document.getElementById('scannerModal').style.display = 'grid';
+  SCAN.target=inputId;
+  const modal=qs('#scannerModal'); modal.style.display='grid';
 }
 
-async function startScanner(){
-  try{
-    await Barcode.ensureReady();
-    const video = document.getElementById('scannerVideo');
-    video.setAttribute('playsinline','true'); // iOS
-    video.muted = true;
+function startScanner(){
+  if(!window.Quagga){ alert('Librairie de scan indisponible.'); return; }
+  // Nettoyage préalable
+  try{ Quagga.stop(); }catch{} 
+  const videoEl=qs('#scannerVideo');
+  videoEl.setAttribute('playsinline','true'); // iOS
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio:false,
-      video:{ facingMode:{ ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } }
-    });
-    SCAN.stream = stream;
-    video.srcObject = stream;
-    await video.play();
-    SCAN.running = true;
+  // Config Quagga
+  Quagga.init({
+    inputStream: {
+      type: "LiveStream",
+      target: videoEl,
+      constraints: {
+        facingMode: "environment",
+        width: { ideal: 1280 }, height: { ideal: 720 }
+      }
+    },
+    decoder: {
+      readers: ["ean_reader","code_128_reader","code_39_reader"],
+      multiple: false
+    },
+    locate: true,
+    locator: { halfSample: true, patchSize: "medium" }
+  }, (err)=>{
+    if(err){ alert("Caméra indisponible: "+err.message); return; }
+    Quagga.start();
+    SCAN.running=true;
+  });
 
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { alpha:false, desynchronized:true });
-
-    const loop = async ()=>{
-      if(!SCAN.running) return;
-      const w = video.videoWidth || 640, h = video.videoHeight || 480;
-      if (w < 2 || h < 2){ SCAN.raf = requestAnimationFrame(loop); return; }
-      canvas.width = w; canvas.height = h;
-      ctx.drawImage(video, 0, 0, w, h);
-      try{
-        const value = await Barcode.decodeFromCanvas(canvas);
-        if (value){
-          document.getElementById(SCAN.target).value = value;
-          closeScanner();
-          return;
-        }
-      }catch{} // on continue à scanner
-      SCAN.raf = requestAnimationFrame(loop);
-    };
-    loop();
-  }catch(e){
-    alert("Caméra indisponible. Utilisez l’upload photo pour décoder.");
-    stopScanner();
-    // Fallback: déclencher l'input fichier associé
-    const picker = Array.from(document.querySelectorAll('input.barcode-photo'))
-      .find(i => i.getAttribute('data-target') === SCAN.target);
-    if (picker) picker.click();
-  }
+  Quagga.offDetected(); // éviter doublons d’abonnements
+  Quagga.onDetected((data)=>{
+    const code = (data && data.codeResult && data.codeResult.code) ? String(data.codeResult.code).trim() : "";
+    if(code){
+      document.getElementById(SCAN.target).value = code;
+      closeScanner();
+    }
+  });
 }
 
 function stopScanner(){
-  SCAN.running = false;
-  if (SCAN.raf) cancelAnimationFrame(SCAN.raf);
-  if (SCAN.stream){
-    try { SCAN.stream.getTracks().forEach(t=>t.stop()); } catch {}
-    SCAN.stream = null;
+  if(SCAN.running){
+    try{ Quagga.stop(); }catch{}
+    SCAN.running=false;
   }
 }
-function closeScanner(){ stopScanner(); document.getElementById('scannerModal').style.display = 'none'; }
 
-document.getElementById('scannerStart')?.addEventListener('click', startScanner);
-document.getElementById('scannerStop')?.addEventListener('click', stopScanner);
-document.getElementById('scannerClose')?.addEventListener('click', closeScanner);
+function closeScanner(){
+  stopScanner();
+  qs('#scannerModal').style.display='none';
+}
+
+qs('#scannerStart')?.addEventListener('click', startScanner);
+qs('#scannerStop')?.addEventListener('click', stopScanner);
+qs('#scannerClose')?.addEventListener('click', closeScanner);
 on(document,'click','button[data-scan]',(e,btn)=> openScannerFor(btn.getAttribute('data-scan')));
 
-/* ===================================================================== */
-/* ===================== DÉCODAGE DEPUIS FICHIER ====================== */
-/* ===================================================================== */
-
+/* ----- Décodage depuis fichier (photo / galerie) ----- */
 on(document,'change','input.barcode-photo', async (e,input)=>{
   const targetId = input.getAttribute('data-target');
   try{
-    const code = await decodeBarcodeFromFile(input.files?.[0]);
-    if (code) document.getElementById(targetId).value = code;
+    const code = await decodeBarcodeFromImageFile(input.files?.[0]);
+    if(code) document.getElementById(targetId).value = code;
   }catch(err){
-    alert(err.message||'Décodage impossible');
+    alert(err?.message || 'Décodage impossible.');
   }finally{
-    // reset pour permettre un re-upload du même fichier
-    input.value = '';
+    input.value='';
   }
 });
 
-async function decodeBarcodeFromFile(file){
-  if(!file) throw new Error('Aucun fichier');
-  await Barcode.ensureReady();
+async function decodeBarcodeFromImageFile(file){
+  if(!file) throw new Error('Aucun fichier.');
 
-  // Lire en DataURL (robuste iOS)
-  let dataURL = await readAsDataURL(file);
-
-  // iPhone / HEIC → JPEG
-  if (/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||"")){
-    try{
-      const blob = await heic2any({ blob:file, toType:'image/jpeg', quality:0.92 });
-      dataURL = await readAsDataURL(blob);
-    }catch(e){ /* on garde l'original si conversion échoue */ }
+  // iPhone HEIC/HEIF → JPEG si possible
+  let blob = file;
+  if(/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||"")){
+    try{ blob = await heic2any({ blob:file, toType:"image/jpeg", quality:0.92 }); }
+    catch(e){ /* on tente sans conversion */ }
   }
 
-  const img = await loadImage(dataURL);
-
-  // multi-rotations + multi-échelles ⇒ bien pour photos inclinées
-  const rotations = [0,90,180,270];
-  const scales    = [1.0,0.85,0.7,0.55];
-  for (const rot of rotations){
-    for (const sc of scales){
-      const canvas = normalizeToCanvas(img, sc, 1600, true, rot);
-      try{
-        const code = await Barcode.decodeFromCanvas(canvas);
-        if (code) return code;
-      }catch{}
-    }
-  }
-  throw new Error("Aucun code-barres détecté. Reprendre une photo nette et bien éclairée.");
+  const dataURL = await readAsDataURL(blob);
+  return new Promise((resolve,reject)=>{
+    if(!window.Quagga){ reject(new Error('Quagga non chargé')); return; }
+    Quagga.decodeSingle({
+      src: dataURL,
+      numOfWorkers: 0, // iOS compatibility
+      inputStream: { size: 1600 }, // normalisation
+      decoder: { readers: ["ean_reader","code_128_reader","code_39_reader"] },
+      locate: true
+    }, (result)=>{
+      const code = result && result.codeResult && result.codeResult.code;
+      if(code) resolve(String(code).trim());
+      else reject(new Error("Aucun code-barres détecté (photo floue/sombre ?)."));
+    });
+  });
 }
 
-/* === utilitaires image === */
+/* Helpers image */
 function readAsDataURL(blobOrFile){
   return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>ok(fr.result); fr.onerror=ko; fr.readAsDataURL(blobOrFile); });
 }
-function loadImage(dataURL){
-  return new Promise((ok,ko)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=ko; i.src=dataURL; });
-}
-function normalizeToCanvas(img, scale, maxDim, boostContrast, rotateDeg){
-  const iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
-  const base = Math.min(1, maxDim / Math.max(iw, ih));
-  const rw = Math.max(8, Math.round(iw * base * scale));
-  const rh = Math.max(8, Math.round(ih * base * scale));
-  const rot = (rotateDeg||0)%360, rad = rot*Math.PI/180;
-  const swap = (rot===90||rot===270);
-  const cw = swap ? rh : rw, ch = swap ? rw : rh;
-
-  const c=document.createElement('canvas'); c.width=cw; c.height=ch;
-  const ctx=c.getContext('2d',{alpha:false,desynchronized:true});
-  ctx.save(); ctx.translate(cw/2,ch/2); ctx.rotate(rad); ctx.drawImage(img,-rw/2,-rh/2,rw,rh); ctx.restore();
-
-  if(boostContrast){
-    const id=ctx.getImageData(0,0,cw,ch), d=id.data, gamma=0.9, contrast=1.25, mid=128;
-    for(let i=0;i<d.length;i+=4){
-      let r=d[i], g=d[i+1], b=d[i+2];
-      r=255*Math.pow(r/255,gamma); g=255*Math.pow(g/255,gamma); b=255*Math.pow(b/255,gamma);
-      r=(r-mid)*contrast+mid; g=(g-mid)*contrast+mid; b=(b-mid)*contrast+mid;
-      d[i]=Math.min(255,Math.max(0,r));
-      d[i+1]=Math.min(255,Math.max(0,g));
-      d[i+2]=Math.min(255,Math.max(0,b));
-    }
-    ctx.putImageData(id,0,0);
-  }
-  return c;
-}
-
 
 /* ===================================================================== */
-/* ==================== Compression images ≤600 KB ===================== */
-function imageFromFile(file){return new Promise((ok,ko)=>{const fr=new FileReader();fr.onload=()=>{const img=new Image();img.onload=()=>ok(img);img.onerror=ko;img.src=fr.result;};fr.onerror=ko;fr.readAsDataURL(file);});}
+/* ============== Compression images principales / KO ================== */
+function imageFromFile(file){ return new Promise((ok,ko)=>{ const fr=new FileReader(); fr.onload=()=>{ const img=new Image(); img.onload=()=>ok(img); img.onerror=ko; img.src=fr.result; }; fr.onerror=ko; fr.readAsDataURL(file); }); }
 async function resizeToLimit(file){
   let src=file;
-  if(/image\/heic|image\/heif/i.test(file.type)||/\.heic$/i.test(file.name||"")){
+  if(/image\/heic|image\/heif/i.test(file.type) || /\.heic$/i.test(file.name||"")){
     try{ src=await heic2any({ blob:file, toType:"image/jpeg", quality:0.95 }); }catch{}
   }
   const img=await imageFromFile(src);
@@ -306,7 +190,7 @@ async function resizeToLimit(file){
   return out;
 }
 
-/* ===================== Construction payload ===================== */
+/* ===================== Build payload ===================== */
 async function buildPayload(form){
   const date=qs('input[name="date_saisie"]',form).value.trim();
   const code=qs('input[name="code_barres"]',form).value.trim();
@@ -335,18 +219,19 @@ async function buildPayload(form){
 }
 
 /* ===================== Submit ===================== */
-on(document,'submit','form.qcForm',async(e,form)=>{
+on(document,'submit','form.qcForm', async (e,form)=>{
   e.preventDefault();
 
-  // Vérifier KO => photo(s) + commentaire
+  // Validation KO
   let ok=true;
   qsa('.control-item',form).forEach(ci=>{
     const checked=qsa('input[type="radio"]',ci).find(r=>r.checked);
-    if((checked?.value||'').toUpperCase()==='KO'){
+    const isKO=(checked?.value||'')==='KO';
+    if(isKO){
       const box=qs('.koDetails',ci);
-      const hasFile=qsa('input[type="file"]',box).some(i=> i.files && i.files.length);
+      const hasFile=qsa('input[type="file"]',box).some(i=>i.files&&i.files.length);
       const hasCom=(qs('textarea',box)?.value||'').trim().length>0;
-      if(!hasFile || !hasCom) ok=false;
+      if(!hasFile||!hasCom) ok=false;
     }
   });
   if(!ok){ alert('Pour chaque KO : photo(s) ET commentaire obligatoires.'); return; }
@@ -367,7 +252,7 @@ on(document,'submit','form.qcForm',async(e,form)=>{
     if(!js.ok){ alert('Erreur backend: '+(js.error||'inconnue')); }
     else{
       alert('✔ Enregistré');
-      // Reset soft
+      // reset soft
       qsa('.control-item',form).forEach(ci=>{
         const okR=qsa('input[type="radio"][value="OK"]',ci)[0];
         if(okR) okR.checked=true;
@@ -386,7 +271,7 @@ on(document,'submit','form.qcForm',async(e,form)=>{
   finally{ hideLoader(); }
 });
 
-/* ===================== KPI + Export ===================== */
+/* ===================== KPI ===================== */
 let CHARTS=[];
 async function loadAndRenderKPI(){
   if(!CONFIG.WEBAPP_BASE_URL){ qs('#kpiResults').textContent='Backend non configuré'; return; }
@@ -400,7 +285,7 @@ async function loadAndRenderKPI(){
   finally{ hideLoader(); }
 }
 function renderKPI(kpi){
-  CHARTS.forEach(c=>{ try{c.destroy();}catch{} }); CHARTS=[];
+  CHARTS.forEach(c=>{try{c.destroy()}catch{}}); CHARTS=[];
   const wrap=qs('#kpiResults'); wrap.innerHTML='';
   const TYPES=['Cartons','Palettes_Avant','Palettes_Destination'];
   const empty=()=>({summary:{total_entries:0,entries_with_any_KO:0,entries_with_any_KO_pct:0,total_KO_items:0,avg_KO_per_entry:0},per_question:{},by_date:[]});
@@ -444,26 +329,22 @@ qs('#btnKpiRefresh')?.addEventListener('click', ()=> loadAndRenderKPI().catch(()
 /* ===================== Export CSV / XLSX ===================== */
 function downloadBlob_(blob, filename){
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+  const a = document.createElement('a'); a.href=url; a.download=filename; document.body.appendChild(a); a.click();
   setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 200);
 }
-async function doExport_(fmt){ // 'csv' | 'xlsx'
+async function doExport_(fmt){
   if(!CONFIG.WEBAPP_BASE_URL){ alert('URL backend non configurée'); return; }
   try{
     const url=new URL(CONFIG.WEBAPP_BASE_URL);
     url.searchParams.set('route','export');
     url.searchParams.set('format',fmt);
     showLoader('Génération export…');
-    const r=await fetch(url.toString(), { method:'GET' });
+    const r=await fetch(url.toString(),{method:'GET'});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const blob=await r.blob();
     downloadBlob_(blob, `QC_${new Date().toISOString().slice(0,10)}.${fmt}`);
-  }catch(e){
-    alert('Erreur export: '+(e?.message||e));
-  }finally{
-    hideLoader();
-  }
+  }catch(e){ alert('Erreur export: '+(e?.message||e)); }
+  finally{ hideLoader(); }
 }
 qs('#btnExportCsv')?.addEventListener('click', ()=> doExport_('csv'));
 qs('#btnExportXlsx')?.addEventListener('click', ()=> doExport_('xlsx'));
