@@ -3,184 +3,35 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pelichet — Contrôle Qualité</title>
+
+  <!-- Couleur d’UI navigateur -->
   <meta name="theme-color" content="#ff6a00" />
-  <title>Pelichet QC</title>
 
   <!-- PWA -->
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icon-32.png" sizes="32x32" />
   <link rel="apple-touch-icon" href="icon-180.png" />
 
-  <!-- Fonts -->
-  <style>
-    @font-face { font-family: "Trebuchet MS"; src: local("Trebuchet MS"); }
-  </style>
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css" />
 
-  <!-- ======= STYLE ======= -->
-  <style>
-    :root{
-      --pel-orange:#ff6a00;
-      --pel-black:#0f1115;
-      --pel-border:#e6e9ef;
-      --pel-muted:#606a7b;
-      --pel-bg:#f6f8fb;          /* fond clair style dashboard */
-      --pel-card:#ffffff;
-      --pel-text:#101318;
-      --pel-tab:#ffffff;
-      --pel-tab-active:#101318;
-      --pel-shadow:0 6px 18px rgba(16,19,24,.06);
-    }
-    :root[data-theme="dark"]{
-      --pel-bg:#0e1117;
-      --pel-card:#141821;
-      --pel-text:#f2f2f2;
-      --pel-muted:#9aa4b2;
-      --pel-border:#242a36;
-      --pel-tab:#151a23;
-      --pel-tab-active:#ffeddc;
-      --pel-shadow:0 10px 24px rgba(0,0,0,.35);
-    }
-
-    * { box-sizing: border-box }
-    html,body { height: 100% }
-    body{
-      margin:0;
-      background: var(--pel-bg);
-      color: var(--pel-text);
-      font: 500 16px/1.45 "Trebuchet MS",system-ui,Segoe UI,Roboto,Arial,sans-serif;
-    }
-
-    /* Appbar style dashboard (fond blanc, ombre douce) */
-    .appbar{
-      position: sticky; top: 0; z-index: 20;
-      display:flex; align-items:center; gap:12px;
-      padding:10px 14px;
-      background:#fff; color:#111;
-      box-shadow: 0 4px 14px rgba(0,0,0,.06);
-      border-bottom: 1px solid #eef1f6;
-    }
-    :root[data-theme="dark"] .appbar{
-      background: #141821; color:#fff; border-bottom: 1px solid var(--pel-border);
-      box-shadow: var(--pel-shadow);
-    }
-    .appbar .logo{ width:36px; height:36px; border-radius:10px }
-    .appbar h1{ margin:0; font-size:1.05rem; letter-spacing:.2px }
-    .spacer{ flex:1 }
-    .icon-btn{
-      border:1px solid var(--pel-border);
-      background: var(--pel-card);
-      color: var(--pel-text);
-      padding:.5rem .7rem; border-radius:.7rem; cursor:pointer;
-      display:inline-flex; align-items:center; gap:.4rem;
-      box-shadow: var(--pel-shadow);
-    }
-
-    /* Tabs façon dashboard chips */
-    .tabs{
-      display:flex; gap:.5rem; flex-wrap:wrap;
-      padding:12px 14px 0 14px; max-width:1100px; margin:0 auto;
-    }
-    .tab{
-      border:1px solid var(--pel-border);
-      background: var(--pel-tab);
-      color: var(--pel-muted);
-      padding:.55rem .9rem; border-radius:999px; cursor:pointer;
-      transition:.18s ease; font-weight:600;
-    }
-    .tab:hover{ transform: translateY(-1px) }
-    .tab.active{ background: var(--pel-orange); color:#000; border-color: transparent }
-
-    /* Container */
-    .wrap{ max-width:1100px; margin:12px auto 24px; padding:0 14px }
-    .tabContent{ display:none }
-    .tabContent.active{ display:block }
-
-    /* Cards & form style dashboard */
-    .card{
-      background: var(--pel-card);
-      border:1px solid var(--pel-border);
-      border-radius:16px;
-      padding:18px;
-      box-shadow: var(--pel-shadow);
-    }
-    .card h2{ margin:0 0 10px 0; font-size:1.05rem }
-    .grid{ display:grid; gap:16px }
-
-    /* Inputs */
-    .row{ display:grid; gap:6px }
-    label{ color: var(--pel-muted); font-weight:600; font-size:.95rem }
-    input[type="date"], input[type="text"], select, textarea, input[type="file"]{
-      width:100%; padding:.65rem .75rem; border-radius:12px;
-      border:1px solid var(--pel-border); background: transparent; color: var(--pel-text);
-    }
-    textarea{ min-height:90px }
-
-    .hstack{ display:flex; gap:8px; align-items:center }
-    small{ color: var(--pel-muted) }
-
-    .qblock{
-      border:1px dashed var(--pel-border);
-      border-radius:12px; padding:12px;
-      background: color-mix(in srgb, var(--pel-card) 94%, var(--pel-orange) 6%);
-    }
-    :root[data-theme="dark"] .qblock{
-      background: color-mix(in srgb, var(--pel-card) 92%, var(--pel-orange) 8%);
-    }
-    .koDetails.hidden{ display:none }
-
-    .btn{
-      border:1px solid var(--pel-border);
-      background: var(--pel-card);
-      color: var(--pel-text);
-      padding:.65rem 1rem; border-radius:12px; cursor:pointer; font-weight:700;
-      box-shadow: var(--pel-shadow);
-    }
-    .btn.primary{ background: var(--pel-orange); color:#000; border-color: transparent }
-    .btn:active{ transform: translateY(1px) }
-
-    /* KPI */
-    .kpi-card{ composes: card; }
-    .kpi-card{ background: var(--pel-card); border:1px solid var(--pel-border); border-radius:16px; padding:16px; margin:12px 0; box-shadow: var(--pel-shadow) }
-    .kpi table{ width:100%; border-collapse: collapse; font-size:.95rem }
-    .kpi th, .kpi td{ padding:8px 10px; border-top:1px solid var(--pel-border) }
-    .kpi th{ text-align:left; color: var(--pel-muted) }
-
-    /* Scanner modal */
-    .scanner-modal{ position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.55); z-index:99 }
-    .scanner-box{ width:min(520px,92vw); background:var(--pel-card); border:1px solid var(--pel-border); border-radius:16px; padding:14px; box-shadow: var(--pel-shadow) }
-    #scannerVideo{ width:100%; height:auto; background:#000; border-radius:12px }
-    .scanner-actions{ display:flex; gap:8px; margin-top:8px }
-    .hint{ color: var(--pel-muted); font-size:.9rem; margin:.3rem 0 0 }
-
-    /* Loader */
-    #globalLoader{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.45); z-index:9999 }
-    #globalLoader .box{ background:#111; color:#fff; padding:14px 16px; border-radius:12px; min-width:230px; text-align:center }
-    #globalLoader .spin{ width:28px; height:28px; border:3px solid #999; border-top-color: var(--pel-orange); border-radius:50%; margin:0 auto 8px; animation:spin .85s linear infinite }
-    @keyframes spin{ to{ transform: rotate(360deg) } }
-
-    /* Responsive */
-    @media (max-width:680px){
-      .grid{ gap:14px }
-      .btn{ padding:.6rem .85rem }
-    }
-  </style>
-
-  <!-- Charts + ZXing + HEIC2ANY -->
+  <!-- Librairies (chart + zxing + HEIC) -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <script src="https://unpkg.com/@zxing/library@latest"></script>
   <script src="https://unpkg.com/heic2any/dist/heic2any.min.js"></script>
 </head>
 <body>
-  <!-- Appbar -->
+  <!-- Appbar / Header -->
   <header class="appbar">
     <img class="logo" src="icon-180.png" alt="Pelichet" />
     <h1>Pelichet — Contrôle Qualité</h1>
     <div class="spacer"></div>
-    <button id="themeToggle" class="icon-btn" title="Clair/Sombre">☀️/🌙</button>
+    <button id="themeToggle" class="icon-btn" title="Clair/Sombre">🌓</button>
   </header>
 
   <!-- Tabs -->
-  <nav class="tabs" id="tabs">
+  <nav id="tabs" class="tabs">
     <button class="tab active" data-target="tabCartons">Cartons</button>
     <button class="tab" data-target="tabPA">Palettes Avant</button>
     <button class="tab" data-target="tabPD">Palettes Destination</button>
@@ -188,7 +39,7 @@
   </nav>
 
   <main class="wrap grid">
-    <!-- CARTONS -->
+    <!-- ========== CARTONS ========== -->
     <section id="tabCartons" class="tabContent active">
       <div class="card grid">
         <h2>Contrôle des Cartons</h2>
@@ -202,7 +53,7 @@
             <label>Code-barres</label>
             <div class="hstack">
               <input id="cartons_code" name="code_barres" type="text" inputmode="numeric" required />
-              <button type="button" class="btn" data-scan="cartons_code">Scanner</button>
+              <button type="button" class="btn" data-scan="cartons_code">📷 Scanner</button>
             </div>
             <small>ou</small>
             <input type="file" class="barcode-photo" data-target="cartons_code" accept="image/*" capture="environment" />
@@ -216,7 +67,9 @@
           <div class="grid">
             <div class="qblock">
               <label>Callage papier correct ?</label>
-              <select name="callage_papier"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
+              <select name="callage_papier">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
               <div class="koDetails hidden grid">
                 <input type="file" name="callage_papier_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="callage_papier_commentaire" placeholder="Décrire le problème"></textarea>
@@ -225,7 +78,9 @@
 
             <div class="qblock">
               <label>Intercalaires présents ?</label>
-              <select name="intercalaires_livres"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
+              <select name="intercalaires_livres">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
               <div class="koDetails hidden grid">
                 <input type="file" name="intercalaires_livres_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="intercalaires_livres_commentaire" placeholder="Décrire le problème"></textarea>
@@ -234,7 +89,9 @@
 
             <div class="qblock">
               <label>Ordre & disposition respectés ?</label>
-              <select name="ordre_colonnes"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
+              <select name="ordre_colonnes">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
               <div class="koDetails hidden grid">
                 <input type="file" name="ordre_colonnes_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="ordre_colonnes_commentaire" placeholder="Décrire le problème"></textarea>
@@ -243,7 +100,9 @@
 
             <div class="qblock">
               <label>Scotch bien appliqué ?</label>
-              <select name="scotch"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
+              <select name="scotch">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
               <div class="koDetails hidden grid">
                 <input type="file" name="scotch_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="scotch_commentaire" placeholder="Décrire le problème"></textarea>
@@ -252,7 +111,9 @@
 
             <div class="qblock">
               <label>Livres dépoussiérés ?</label>
-              <select name="depoussierage"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select>
+              <select name="depoussierage">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
               <div class="koDetails hidden grid">
                 <input type="file" name="depoussierage_photos" accept="image/*" capture="environment" multiple />
                 <textarea name="depoussierage_commentaire" placeholder="Décrire le problème"></textarea>
@@ -265,31 +126,86 @@
       </div>
     </section>
 
-    <!-- PALETTES AVANT -->
+    <!-- ========== PALETTES AVANT ========== -->
     <section id="tabPA" class="tabContent">
       <div class="card grid">
         <h2>Palettes (Avant camion)</h2>
         <form id="formPA" class="qcForm grid" data-type="Palettes_Avant" autocomplete="off">
-          <div class="row"><label>Date</label><input type="date" name="date_saisie" required /></div>
+          <div class="row">
+            <label>Date</label>
+            <input type="date" name="date_saisie" required />
+          </div>
 
           <div class="row">
             <label>Code-barres palette</label>
             <div class="hstack">
               <input id="pa_code" name="code_barres" type="text" required />
-              <button type="button" class="btn" data-scan="pa_code">Scanner</button>
+              <button type="button" class="btn" data-scan="pa_code">📷 Scanner</button>
             </div>
             <small>ou</small>
             <input type="file" class="barcode-photo" data-target="pa_code" accept="image/*" capture="environment" />
           </div>
 
-          <div class="row"><label>Photo principale</label><input type="file" name="photo_principale" accept="image/*" capture="environment" /></div>
+          <div class="row">
+            <label>Photo principale</label>
+            <input type="file" name="photo_principale" accept="image/*" capture="environment" />
+          </div>
 
           <div class="grid">
-            <div class="qblock"><label>Cartons en bon état ?</label><select name="cartons_etat"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden grid"><input type="file" name="cartons_etat_photos" accept="image/*" capture="environment" multiple /><textarea name="cartons_etat_commentaire"></textarea></div></div>
-            <div class="qblock"><label>Intercalaires présents ?</label><select name="intercalaires_cartons"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden grid"><input type="file" name="intercalaires_cartons_photos" accept="image/*" capture="environment" multiple /><textarea name="intercalaires_cartons_commentaire"></textarea></div></div>
-            <div class="qblock"><label>Ordre des cartons respecté ?</label><select name="ordre_cartons"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden grid"><input type="file" name="ordre_cartons_photos" accept="image/*" capture="environment" multiple /><textarea name="ordre_cartons_commentaire"></textarea></div></div>
-            <div class="qblock"><label>Cerclage bien appliqué ?</label><select name="cerclage"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden grid"><input type="file" name="cerclage_photos" accept="image/*" capture="environment" multiple /><textarea name="cerclage_commentaire"></textarea></div></div>
-            <div class="qblock"><label>Palette stable ?</label><select name="stabilite"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden grid"><input type="file" name="stabilite_photos" accept="image/*" capture="environment" multiple /><textarea name="stabilite_commentaire"></textarea></div></div>
+            <div class="qblock">
+              <label>Cartons en bon état ?</label>
+              <select name="cartons_etat">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
+              <div class="koDetails hidden grid">
+                <input type="file" name="cartons_etat_photos" accept="image/*" capture="environment" multiple />
+                <textarea name="cartons_etat_commentaire"></textarea>
+              </div>
+            </div>
+
+            <div class="qblock">
+              <label>Intercalaires présents ?</label>
+              <select name="intercalaires_cartons">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
+              <div class="koDetails hidden grid">
+                <input type="file" name="intercalaires_cartons_photos" accept="image/*" capture="environment" multiple />
+                <textarea name="intercalaires_cartons_commentaire"></textarea>
+              </div>
+            </div>
+
+            <div class="qblock">
+              <label>Ordre des cartons respecté ?</label>
+              <select name="ordre_cartons">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
+              <div class="koDetails hidden grid">
+                <input type="file" name="ordre_cartons_photos" accept="image/*" capture="environment" multiple />
+                <textarea name="ordre_cartons_commentaire"></textarea>
+              </div>
+            </div>
+
+            <div class="qblock">
+              <label>Cerclage bien appliqué ?</label>
+              <select name="cerclage">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
+              <div class="koDetails hidden grid">
+                <input type="file" name="cerclage_photos" accept="image/*" capture="environment" multiple />
+                <textarea name="cerclage_commentaire"></textarea>
+              </div>
+            </div>
+
+            <div class="qblock">
+              <label>Palette stable ?</label>
+              <select name="stabilite">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
+              <div class="koDetails hidden grid">
+                <input type="file" name="stabilite_photos" accept="image/*" capture="environment" multiple />
+                <textarea name="stabilite_commentaire"></textarea>
+              </div>
+            </div>
           </div>
 
           <button type="submit" class="btn primary">📤 Envoyer</button>
@@ -297,28 +213,53 @@
       </div>
     </section>
 
-    <!-- PALETTES DESTINATION -->
+    <!-- ========== PALETTES DESTINATION ========== -->
     <section id="tabPD" class="tabContent">
       <div class="card grid">
         <h2>Palettes (Destination)</h2>
         <form id="formPD" class="qcForm grid" data-type="Palettes_Destination" autocomplete="off">
-          <div class="row"><label>Date</label><input type="date" name="date_saisie" required /></div>
+          <div class="row">
+            <label>Date</label>
+            <input type="date" name="date_saisie" required />
+          </div>
 
           <div class="row">
             <label>Code-barres palette</label>
             <div class="hstack">
               <input id="pd_code" name="code_barres" type="text" required />
-              <button type="button" class="btn" data-scan="pd_code">Scanner</button>
+              <button type="button" class="btn" data-scan="pd_code">📷 Scanner</button>
             </div>
             <small>ou</small>
             <input type="file" class="barcode-photo" data-target="pd_code" accept="image/*" capture="environment" />
           </div>
 
-          <div class="row"><label>Photo principale</label><input type="file" name="photo_principale" accept="image/*" capture="environment" /></div>
+          <div class="row">
+            <label>Photo principale</label>
+            <input type="file" name="photo_principale" accept="image/*" capture="environment" />
+          </div>
 
           <div class="grid">
-            <div class="qblock"><label>Cartons en bon état ?</label><select name="cartons_etat"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden grid"><input type="file" name="cartons_etat_photos" accept="image/*" capture="environment" multiple /><textarea name="cartons_etat_commentaire"></textarea></div></div>
-            <div class="qblock"><label>Cerclage bien appliqué ?</label><select name="cerclage"><option value="OK" selected>OK</option><option value="KO">Pas OK</option></select><div class="koDetails hidden grid"><input type="file" name="cerclage_photos" accept="image/*" capture="environment" multiple /><textarea name="cerclage_commentaire"></textarea></div></div>
+            <div class="qblock">
+              <label>Cartons en bon état ?</label>
+              <select name="cartons_etat">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
+              <div class="koDetails hidden grid">
+                <input type="file" name="cartons_etat_photos" accept="image/*" capture="environment" multiple />
+                <textarea name="cartons_etat_commentaire"></textarea>
+              </div>
+            </div>
+
+            <div class="qblock">
+              <label>Cerclage bien appliqué ?</label>
+              <select name="cerclage">
+                <option value="OK" selected>OK</option><option value="KO">Pas OK</option>
+              </select>
+              <div class="koDetails hidden grid">
+                <input type="file" name="cerclage_photos" accept="image/*" capture="environment" multiple />
+                <textarea name="cerclage_commentaire"></textarea>
+              </div>
+            </div>
           </div>
 
           <button type="submit" class="btn primary">📤 Envoyer</button>
@@ -326,11 +267,13 @@
       </div>
     </section>
 
-    <!-- KPI -->
+    <!-- ========== KPI ========== -->
     <section id="tabKPI" class="tabContent">
       <div class="card grid">
         <h2>Tableau de bord KPI</h2>
-        <div class="hstack"><button id="btnKpiRefresh" class="btn">🔄 Rafraîchir</button></div>
+        <div class="hstack">
+          <button id="btnKpiRefresh" class="btn">🔄 Rafraîchir</button>
+        </div>
         <div id="kpiResults" class="kpi">—</div>
       </div>
     </section>
@@ -350,18 +293,27 @@
     </div>
   </div>
 
-  <!-- LOADER GLOBAL -->
+  <!-- LOADER GLOBAL (avec barre indéterminée) -->
   <div id="globalLoader" style="display:none">
     <div class="box">
       <div class="spin"></div>
-      <div id="loaderMsg">Chargement…</div>
+      <div id="loaderMsg">Traitement en cours…</div>
+      <div style="margin-top:10px;background:#333;border-radius:8px;height:10px;overflow:hidden">
+        <div id="loaderBar" style="width:40%;height:100%;background:#ff6a00;animation:loader-move 1.1s linear infinite"></div>
+      </div>
     </div>
   </div>
+  <style>
+    @keyframes loader-move {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(220%); }
+    }
+  </style>
 
-  <!-- Scripts applicatifs -->
+  <!-- App -->
   <script src="app.js"></script>
   <script>
-    // PWA : service worker (sans offline)
+    // Enregistrer le service worker PWA
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
     }
