@@ -18,40 +18,31 @@ const todayStr = ()=>{
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 };
 function loadScriptOnce(src){
-  return new Promise((resolve, reject)=>{
+  return new Promise((resolve,reject)=>{
     if ([...document.scripts].some(s => s.src && s.src.split('?')[0] === src.split('?')[0])) return resolve();
     const s=document.createElement('script');
-    s.src=src;
-    s.async=true;
-    s.crossOrigin='anonymous';
-    s.onload=()=>resolve();
-    s.onerror=()=>reject(new Error('Échec chargement: '+src));
+    s.src=src; s.async=true; s.crossOrigin='anonymous';
+    s.onload=()=>resolve(); s.onerror=()=>reject(new Error('Échec chargement: '+src));
     document.head.appendChild(s);
   });
 }
 
+// Quagga2 optionnel (si tu auto-héberges libs/quagga.min.js)
 async function ensureQuagga(){
   if (window.Quagga) return;
-
-  // URLs SANS numéro de version pour éviter les 404 à l’avenir
-  const CANDIDATES = [
-    'https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js',
-    'https://unpkg.com/@ericblade/quagga2/dist/quagga.min.js',
-    // votre copie locale (à ajouter dans le repo si besoin) :
-    location.origin + (location.pathname.endsWith('/') ? '' : '/') + 'libs/quagga.min.js'
-  ];
-
-  let lastErr;
-  for (const url of CANDIDATES){
-    try {
-      await loadScriptOnce(url);
-      if (window.Quagga) {
-        console.log('✅ Quagga2 chargé via', url);
-        return;
-      }
-    } catch(e) { lastErr = e; }
+  // 👉 soit tu déposes le fichier dans ton repo: /QC2/libs/quagga.min.js
+  // (conseillé, plus de CORS/404)
+  await loadScriptOnce(location.origin + location.pathname.replace(/\/[^/]*$/,'/') + 'libs/quagga.min.js')
+    .catch(()=>{}); // on ignore si absent
+}
+async function ensureZXing(){
+  if (window.ZXingBrowser && window.ZXing) return;
+  // Charger d’abord la lib, puis le wrapper browser
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js');
+  await loadScriptOnce('https://cdn.jsdelivr.net/npm/@zxing/browser@0.1.4/umd/index.min.js');
+  if (!(window.ZXingBrowser && window.ZXing)) {
+    throw new Error('ZXing non chargé');
   }
-  throw new Error('Quagga introuvable (toutes les sources ont échoué)'+(lastErr?` — ${lastErr.message}`:''));
 }
 
 async function ensureHeic2Any(){
@@ -123,41 +114,64 @@ function openScannerFor(inputId){
   qs('#scannerModal').style.display='grid';
 }
 async function startScanner(){
+  // Ouvre le modal si pas déjà ouvert
+  qs('#scannerModal').style.display='grid';
+  const inputId = SCAN.target;
+
+  // 1) Tentative Quagga si dispo (self-host)
   try{
     await ensureQuagga();
-    try{ Quagga.stop(); }catch{}
-    const videoEl=qs('#scannerVideo');
-    videoEl.setAttribute('playsinline','true');
-    Quagga.init({
-      inputStream:{
-        type:'LiveStream',
-        target: videoEl,
-        constraints:{
-          facingMode:'environment',
-          width:{ideal:1280}, height:{ideal:720}
+    if (window.Quagga){
+      try{ Quagga.stop(); }catch{}
+      const videoEl=qs('#scannerVideo'); videoEl.setAttribute('playsinline','true');
+      Quagga.init({
+        inputStream:{ type:'LiveStream', target: videoEl, constraints:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:720} } },
+        decoder:{ readers:['ean_reader','code_128_reader','code_39_reader'] }, locate:true, locator:{halfSample:true,patchSize:'medium'}
+      }, (err)=>{
+        if(err) throw err;
+        Quagga.start(); SCAN.running=true;
+      });
+      Quagga.offDetected?.();
+      Quagga.onDetected((res)=>{
+        const code=res?.codeResult?.code ? String(res.codeResult.code).trim() : '';
+        if(code){
+          document.getElementById(inputId).value=code;
+          closeScanner();
         }
-      },
-      decoder:{ readers:['ean_reader','code_128_reader','code_39_reader'] },
-      locate:true, locator:{halfSample:true,patchSize:'medium'}
-    },(err)=>{
-      if(err){ alert("Caméra indisponible : "+(err.message||err)); return; }
-      Quagga.start(); SCAN.running=true;
-    });
-    Quagga.offDetected?.();
-    Quagga.onDetected((res)=>{
-      const code=res?.codeResult?.code ? String(res.codeResult.code).trim() : '';
-      if(code){
-        document.getElementById(SCAN.target).value=code;
+      });
+      return; // ✅ Quagga OK
+    }
+  }catch(e){
+    // on poursuit en fallback
+  }
+
+  // 2) Fallback ZXing (CDN stables)
+  try{
+    await ensureZXing();
+    const videoEl=qs('#scannerVideo'); videoEl.setAttribute('playsinline','true');
+
+    // Arrête Quagga si lancé (sécurité)
+    try{ Quagga && Quagga.stop(); }catch{}
+
+    // ZXing reader
+    SCAN._zxingReader = new ZXingBrowser.BrowserMultiFormatReader();
+    const devices = await ZXingBrowser.BrowserCodeReader.listVideoInputDevices();
+    const backCam = devices.find(d=>/back|rear|environment/i.test(d.label))?.deviceId || devices[0]?.deviceId;
+
+    await SCAN._zxingReader.decodeFromVideoDevice(backCam, videoEl, (result, err, controls)=>{
+      if(result && result.getText){
+        document.getElementById(inputId).value = String(result.getText()).trim();
+        controls.stop();
         closeScanner();
       }
+      // err silencieux tant que pas décodé
     });
-  }catch(e){
-    alert("Scanner indisponible : "+(e?.message||e));
-    stopScanner();
-    const picker=qsa('input.barcode-photo').find(i=>i.getAttribute('data-target')===SCAN.target);
-    if(picker) picker.click();
+    SCAN.running = true;
+  }catch(err){
+    alert("Caméra indisponible ou permissions refusées. Vous pouvez charger une photo pour décoder.");
   }
 }
+
 function stopScanner(){ if(SCAN.running){ try{Quagga.stop();}catch{} SCAN.running=false; } }
 function closeScanner(){ stopScanner(); qs('#scannerModal').style.display='none'; }
 qs('#scannerStart')?.addEventListener('click',startScanner);
