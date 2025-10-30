@@ -172,8 +172,15 @@ async function startScanner(){
   }
 }
 
-function stopScanner(){ if(SCAN.running){ try{Quagga.stop();}catch{} SCAN.running=false; } }
+function stopScanner(){
+  // Quagga
+  try{ if (SCAN.running && window.Quagga){ Quagga.stop(); } }catch{}
+  // ZXing
+  try{ SCAN._zxingReader && SCAN._zxingReader.reset(); }catch{}
+  SCAN.running=false;
+}
 function closeScanner(){ stopScanner(); qs('#scannerModal').style.display='none'; }
+
 qs('#scannerStart')?.addEventListener('click',startScanner);
 qs('#scannerStop')?.addEventListener('click',stopScanner);
 qs('#scannerClose')?.addEventListener('click',closeScanner);
@@ -190,26 +197,44 @@ on(document,'change','input.barcode-photo',async(e,input)=>{
 });
 async function decodeBarcodeFromImageFile(file){
   if(!file) throw new Error('Aucun fichier.');
-  await ensureQuagga();
+
+  // HEIC → JPEG si possible (iPhone)
   let blob=file;
   if(/image\/heic|image\/heif/i.test(file.type)||/\.heic$/i.test(file.name||'')){
     try{ await ensureHeic2Any(); blob=await heic2any({blob:file,toType:'image/jpeg',quality:0.92}); }catch{}
   }
   const dataURL=await readAsDataURL(blob);
-  return new Promise((resolve,reject)=>{
-    if(!window.Quagga){ reject(new Error('Quagga non chargé')); return; }
-    Quagga.decodeSingle({
-      src:dataURL,numOfWorkers:0,
-      inputStream:{size:1600},
-      decoder:{readers:['ean_reader','code_128_reader','code_39_reader']},
-      locate:true
-    },(result)=>{
-      const code=result?.codeResult?.code ? String(result.codeResult.code).trim() : '';
-      if(code) resolve(code);
-      else reject(new Error('Aucun code-barres détecté (photo floue/sombre ?).'));
-    });
-  });
+
+  // 1) Essayer Quagga si disponible
+  try{
+    await ensureQuagga();
+    if(window.Quagga){
+      return await new Promise((resolve,reject)=>{
+        Quagga.decodeSingle({
+          src:dataURL, numOfWorkers:0, inputStream:{size:1600},
+          decoder:{readers:['ean_reader','code_128_reader','code_39_reader']}, locate:true
+        }, (result)=>{
+          const code=result?.codeResult?.code ? String(result.codeResult.code).trim() : '';
+          if(code) resolve(code); else reject(new Error('Quagga: aucun code détecté'));
+        });
+      });
+    }
+  }catch(e){ /* on passe à ZXing */ }
+
+  // 2) Fallback ZXing (fiable)
+  await ensureZXing();
+  const reader = new ZXingBrowser.BrowserMultiFormatReader();
+  // ZXing attend un élément <img> ou une URL — on crée un blob URL temporaire
+  const blobURL = URL.createObjectURL(blob instanceof Blob ? blob : new Blob([blob]));
+  try{
+    const result = await reader.decodeFromImageUrl(blobURL);
+    return String(result.getText()).trim();
+  } finally {
+    URL.revokeObjectURL(blobURL);
+    reader.reset();
+  }
 }
+
 function readAsDataURL(blobOrFile){
   return new Promise((ok,ko)=>{
     const fr=new FileReader();
