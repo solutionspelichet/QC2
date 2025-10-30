@@ -17,21 +17,41 @@ const todayStr = ()=>{
   const d=new Date(), p=n=>n<10?'0'+n:n;
   return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`;
 };
+// --- Loader script robuste (multi-CDN + cache-busting + dédup) ---
 function loadScriptOnce(src){
-  return new Promise((resolve,reject)=>{
-    if ([...document.scripts].some(s => s.src === src)) return resolve();
-    const s=document.createElement('script');
-    s.src=src; s.async=true;
-    s.onload=()=>resolve();
-    s.onerror=()=>reject(new Error('Échec chargement script: '+src));
+  return new Promise((resolve, reject)=>{
+    // déjà présent ?
+    if ([...document.scripts].some(s => s.src && s.src.split('?')[0] === src.split('?')[0])) return resolve();
+    const s = document.createElement('script');
+    s.src = src;
+    s.async = true;
+    s.crossOrigin = 'anonymous';
+    s.onload = ()=> resolve();
+    s.onerror = ()=> reject(new Error('Échec chargement: '+src));
     document.head.appendChild(s);
   });
 }
+
+// Essaye plusieurs CDNs + versioning pour casser le cache (PWA/service worker/iOS).
 async function ensureQuagga(){
   if (window.Quagga) return;
-  await loadScriptOnce('https://cdn.jsdelivr.net/npm/quagga@1.2.6/dist/quagga.min.js');
-  if (!window.Quagga) throw new Error('Quagga introuvable');
+  const v = '1.2.6';
+  const bust = `v=${Date.now()}`;
+  const CDNS = [
+    `https://cdn.jsdelivr.net/npm/quagga@${v}/dist/quagga.min.js?${bust}`,
+    `https://unpkg.com/quagga@${v}/dist/quagga.min.js?${bust}`,
+    `https://cdnjs.cloudflare.com/ajax/libs/quagga/${v}/quagga.min.js?${bust}`,
+  ];
+  let lastErr;
+  for (const url of CDNS){
+    try{
+      await loadScriptOnce(url);
+      if (window.Quagga) return; // UMD global attendu: window.Quagga
+    }catch(e){ lastErr = e; }
+  }
+  throw new Error('Quagga introuvable après tentatives multi-CDN' + (lastErr ? ` — ${lastErr.message}` : ''));
 }
+
 async function ensureHeic2Any(){
   if (window.heic2any) return;
   await loadScriptOnce('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js');
